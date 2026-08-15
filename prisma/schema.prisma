@@ -1,10 +1,16 @@
-// Enum-like fields are modeled as String (not Prisma `enum`) — SQLite/Postgres enum support
-// diverges, and the single source of truth is the TS unions in lib/types/enums.ts. This keeps
-// "swap SQLite for Postgres later" a one-line datasource change, not a migration rewrite.
+// Enum-like fields are modeled as String (not Prisma `enum`) — the single source of truth is
+// the TS unions in lib/types/enums.ts, checked at the application layer via zod/TS, not by the
+// database. (This project ran on SQLite through initial development; it is Postgres from here
+// on — see DATABASE_URL.)
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+  // Prisma's own connection pool, sized via the DATABASE_URL query string (see .env.example) —
+  // e.g. ?connection_limit=10&pool_timeout=20. A high-concurrency serverless deployment should
+  // sit this behind PgBouncer or Prisma Accelerate instead of relying on this pool alone, since
+  // many short-lived function instances each holding their own pool can still exhaust Postgres's
+  // own max_connections.
 }
 
 generator client {
@@ -81,10 +87,11 @@ model CareerProfileEntry {
   userConfirmed Boolean @default(false)
   userEdited    Boolean @default(false)
 
-  createdAt DateTime @updatedAt
-  updatedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId, section])
+  @@index([sourceDocumentId])
 }
 
 model Job {
@@ -134,6 +141,7 @@ model MatchScore {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, jobId])
+  @@index([jobId])
 }
 
 model ResumeVersion {
@@ -156,6 +164,7 @@ model ResumeVersion {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, jobId])
+  @@index([jobId])
 }
 
 model Application {
@@ -190,6 +199,7 @@ model Application {
 
   @@unique([userId, jobId])
   @@index([userId, status])
+  @@index([jobId])
 }
 
 model FollowUp {
@@ -211,6 +221,7 @@ model FollowUp {
   updatedAt DateTime @updatedAt
 
   @@index([userId, status, dueDate])
+  @@index([applicationId])
 }
 
 model InterviewPrep {
@@ -229,6 +240,8 @@ model InterviewPrep {
   updatedAt DateTime @updatedAt
 
   questions InterviewQuestion[]
+
+  @@index([userId])
 }
 
 model InterviewQuestion {
@@ -282,6 +295,7 @@ model MockInterviewAttempt {
   createdAt DateTime @default(now())
 
   @@index([userId, interviewQuestionId])
+  @@index([interviewQuestionId])
 }
 
 model Contact {
@@ -318,6 +332,7 @@ model Contact {
   messages OutreachMessage[]
 
   @@index([userId, jobId])
+  @@index([jobId])
 }
 
 model OutreachMessage {

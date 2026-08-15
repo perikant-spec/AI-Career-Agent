@@ -39,6 +39,10 @@ yarn-error.log*
 /prisma/*.db
 /prisma/*.db-journal
 
+# local embedded Postgres data directory + backups — never commit database contents
+/.postgres-data
+/backups
+
 # local resume/file storage (legacy local-disk provider — production uses object storage)
 /data/uploads
 

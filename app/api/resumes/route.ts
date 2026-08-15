@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { storage } from "@/lib/storage/localDisk";
+import { getStorageProvider } from "@/lib/storage";
+import { MAX_RESUME_FILE_SIZE_BYTES, isAllowedResumeFile } from "@/lib/storage/types";
 import { extractResumeText } from "@/lib/resumeText/extract";
 import { extractAndValidateResumeEntries } from "@/lib/profile/buildProfileEntries";
-
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
 export async function GET() {
   const session = await auth();
@@ -40,15 +39,22 @@ export async function POST(request: Request) {
   if (!file || !(file instanceof File)) {
     return NextResponse.json({ error: "No file was uploaded." }, { status: 400 });
   }
-  if (file.size > MAX_FILE_SIZE_BYTES) {
+  if (file.size > MAX_RESUME_FILE_SIZE_BYTES) {
     return NextResponse.json({ error: "File is too large (10MB max)." }, { status: 400 });
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
   const mimeType = file.type || "application/octet-stream";
+  if (!isAllowedResumeFile(mimeType, file.name)) {
+    return NextResponse.json(
+      { error: "Only PDF and DOCX files are supported. Try exporting to one of those, or paste your resume text directly." },
+      { status: 400 }
+    );
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
 
   const extraction = await extractResumeText(buffer, mimeType, file.name);
-  const storageKey = await storage.put({ userId, fileName: file.name, data: buffer });
+  const storageKey = await getStorageProvider().put({ userId, fileName: file.name, mimeType, data: buffer });
 
   const existingCount = await prisma.resumeDocument.count({ where: { userId } });
   const isMaster = existingCount === 0;
