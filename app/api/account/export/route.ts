@@ -29,7 +29,17 @@ export async function GET(request: Request) {
   ] = await Promise.all([
     prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { id: true, email: true, name: true, createdAt: true, updatedAt: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        createdAt: true,
+        updatedAt: true,
+        termsAcceptedAt: true,
+        termsVersion: true,
+        privacyAcceptedAt: true,
+        privacyVersion: true,
+      },
     }),
     prisma.resumeDocument.findMany({ where: { userId } }),
     prisma.careerProfileEntry.findMany({ where: { userId } }),

@@ -14,7 +14,7 @@ interface AuthContextValue {
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<boolean>;
-  register: (email: string, password: string, name?: string) => Promise<boolean>;
+  register: (email: string, password: string, acceptedLegal: boolean, name?: string) => Promise<boolean>;
   signOut: () => Promise<void>;
 }
 
@@ -64,12 +64,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const register = useCallback(async (email: string, password: string, name?: string) => {
+  const register = useCallback(async (email: string, password: string, acceptedLegal: boolean, name?: string) => {
     setError(null);
     try {
       const body = await apiFetch<{ token: string; user: AuthUser }>("/api/mobile/auth/register", {
         method: "POST",
-        body: { email, password, name },
+        body: { email, password, name, acceptedLegal },
       });
       await persistToken(body.token);
       setToken(body.token);

@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { registerSchema } from "@/lib/validation/auth";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/security/rateLimit";
+import { LEGAL_DOCUMENTS } from "@/lib/legal/documents";
 
 // Auth.js has no built-in signup endpoint — Credentials-only auth needs its own.
 export async function POST(request: Request) {
@@ -30,8 +31,17 @@ export async function POST(request: Request) {
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
+  const now = new Date();
   const user = await prisma.user.create({
-    data: { email, passwordHash, name },
+    data: {
+      email,
+      passwordHash,
+      name,
+      termsAcceptedAt: now,
+      termsVersion: LEGAL_DOCUMENTS.terms.version,
+      privacyAcceptedAt: now,
+      privacyVersion: LEGAL_DOCUMENTS.privacy.version,
+    },
     select: { id: true, email: true, name: true },
   });
 

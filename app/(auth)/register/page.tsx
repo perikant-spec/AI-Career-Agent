@@ -12,6 +12,7 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -23,7 +24,7 @@ export default function RegisterPage() {
     const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name || undefined, email, password }),
+      body: JSON.stringify({ name: name || undefined, email, password, acceptedLegal }),
     });
 
     if (!res.ok) {
@@ -84,13 +85,27 @@ export default function RegisterPage() {
           <span className="text-[11.5px] text-ink-quaternary">At least 8 characters.</span>
         </label>
 
+        <label className="flex items-start gap-2 text-[12.5px] text-ink-secondary leading-snug">
+          <input
+            type="checkbox"
+            required
+            checked={acceptedLegal}
+            onChange={(e) => setAcceptedLegal(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            I agree to the <a href="/terms" target="_blank" className="underline">Terms of Service</a> and{" "}
+            <a href="/privacy" target="_blank" className="underline">Privacy Policy</a>.
+          </span>
+        </label>
+
         {error ? (
           <div className="text-[12.5px] text-accent-risk-text bg-accent-risk-bg border border-accent-risk-border rounded-btn px-3 py-2">
             {error}
           </div>
         ) : null}
 
-        <Button type="submit" variant="primary" disabled={loading} className="mt-1.5">
+        <Button type="submit" variant="primary" disabled={loading || !acceptedLegal} className="mt-1.5">
           {loading ? "Creating account…" : "Create account"}
         </Button>
       </form>

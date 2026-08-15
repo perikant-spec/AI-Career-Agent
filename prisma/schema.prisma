@@ -30,6 +30,15 @@ model User {
   passwordResetTokenHash      String?
   passwordResetTokenExpiresAt DateTime?
 
+  // Captured at registration (see lib/legal/documents.ts) — version is the LEGAL_DOCUMENTS
+  // slug's version string at the moment of acceptance, not the current one, so a later legal-doc
+  // update can be detected by comparing against LEGAL_DOCUMENTS's current version and trigger
+  // re-consent rather than silently assuming an old acceptance still covers new terms.
+  termsAcceptedAt   DateTime?
+  termsVersion      String?
+  privacyAcceptedAt DateTime?
+  privacyVersion    String?
+
   resumes               ResumeDocument[]
   profileEntries        CareerProfileEntry[]
   jobs                  Job[]
@@ -374,6 +383,13 @@ model UserPreferences {
   // Days after applying before a follow-up is due. User-configurable; PRD's "MVP: manual
   // timers" — this is a fixed offset computed once at Applied time, not a smart/adaptive one.
   followUpDays Int @default(7)
+
+  // Opt-in, defaults to false — matches the registration page's promise that nothing is used to
+  // train models unless explicitly turned on here. No training pipeline exists in this codebase
+  // today (the Anthropic API this app calls does not train on API traffic regardless), so this
+  // flag currently has no consuming system; it exists so one can be built later already gated
+  // correctly, rather than retrofitting consent after the fact.
+  aiTrainingOptIn Boolean @default(false)
 
   updatedAt DateTime @updatedAt
 }
