@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { checkRateLimit, getClientIp, __resetRateLimitStateForTests } from "@/lib/security/rateLimit";
+import {
+  checkRateLimit,
+  checkUserAndGlobalRateLimit,
+  getClientIp,
+  __resetRateLimitStateForTests,
+} from "@/lib/security/rateLimit";
 
 describe("checkRateLimit", () => {
   beforeEach(() => {
@@ -38,6 +43,48 @@ describe("checkRateLimit", () => {
     vi.advanceTimersByTime(1001);
     expect(checkRateLimit(key, 1000, 5).allowed).toBe(true);
     vi.useRealTimers();
+  });
+});
+
+describe("checkUserAndGlobalRateLimit", () => {
+  beforeEach(() => {
+    __resetRateLimitStateForTests();
+  });
+
+  it("allows requests under both the per-user and global caps", () => {
+    const result = checkUserAndGlobalRateLimit({
+      scope: "test-scope-1",
+      userId: "user-1",
+      userMax: 5,
+      userWindowMs: 60_000,
+      globalMax: 100,
+      globalWindowMs: 60_000,
+    });
+    expect(result.allowed).toBe(true);
+  });
+
+  it("blocks once the per-user cap is exceeded, even though global is nowhere near its cap", () => {
+    const config = { scope: "test-scope-2", userId: "user-2", userMax: 3, userWindowMs: 60_000, globalMax: 1000, globalWindowMs: 60_000 };
+    for (let i = 0; i < 3; i++) checkUserAndGlobalRateLimit(config);
+    expect(checkUserAndGlobalRateLimit(config).allowed).toBe(false);
+  });
+
+  it("blocks once the global cap is exceeded, even for a user well under their own per-user cap", () => {
+    const globalConfig = { scope: "test-scope-3", userMax: 1000, userWindowMs: 60_000, globalMax: 3, globalWindowMs: 60_000 };
+    // Three different users each make one request — none individually near their own cap.
+    checkUserAndGlobalRateLimit({ ...globalConfig, userId: "user-a" });
+    checkUserAndGlobalRateLimit({ ...globalConfig, userId: "user-b" });
+    checkUserAndGlobalRateLimit({ ...globalConfig, userId: "user-c" });
+    // A fourth request from yet another user trips the shared global bucket.
+    expect(checkUserAndGlobalRateLimit({ ...globalConfig, userId: "user-d" }).allowed).toBe(false);
+  });
+
+  it("different scopes never share a bucket", () => {
+    const configA = { scope: "scope-a", userId: "same-user", userMax: 1, userWindowMs: 60_000, globalMax: 1000, globalWindowMs: 60_000 };
+    const configB = { scope: "scope-b", userId: "same-user", userMax: 1, userWindowMs: 60_000, globalMax: 1000, globalWindowMs: 60_000 };
+    expect(checkUserAndGlobalRateLimit(configA).allowed).toBe(true);
+    expect(checkUserAndGlobalRateLimit(configA).allowed).toBe(false); // scope-a now exhausted for this user
+    expect(checkUserAndGlobalRateLimit(configB).allowed).toBe(true); // scope-b is untouched
   });
 });
 

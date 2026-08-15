@@ -5,6 +5,8 @@ import { getStorageProvider } from "@/lib/storage";
 import { MAX_RESUME_FILE_SIZE_BYTES, isAllowedResumeFile } from "@/lib/storage/types";
 import { extractResumeText } from "@/lib/resumeText/extract";
 import { extractAndValidateResumeEntries } from "@/lib/profile/buildProfileEntries";
+import { checkUserAndGlobalRateLimit, rateLimitResponse } from "@/lib/security/rateLimit";
+import { RATE_LIMITS } from "@/lib/security/rateLimits.config";
 
 export async function GET() {
   const session = await auth();
@@ -32,6 +34,9 @@ export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const userId = session.user.id;
+
+  const rate = checkUserAndGlobalRateLimit({ scope: "resumeUpload", userId, ...RATE_LIMITS.resumeUpload });
+  if (!rate.allowed) return rateLimitResponse(rate.retryAfterSeconds!);
 
   const formData = await request.formData().catch(() => null);
   const file = formData?.get("file");

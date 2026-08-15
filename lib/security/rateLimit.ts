@@ -54,6 +54,28 @@ export function checkRateLimit(key: string, windowMs: number, max: number): Rate
   return { allowed: true };
 }
 
+export interface DualRateLimitConfig {
+  /** A short, stable name for the endpoint being limited, e.g. "resume-upload" — becomes part of
+   *  the bucket key, so it must be unique per limited action. */
+  scope: string;
+  userId: string;
+  userMax: number;
+  userWindowMs: number;
+  globalMax: number;
+  globalWindowMs: number;
+}
+
+/** Per-user limits alone cap what any single account can do, but do nothing against many cheap
+ *  accounts each staying just under their own cap — the aggregate cost (AI API spend, DB load)
+ *  is the same either way. This checks a shared "global:<scope>" bucket first (protects the
+ *  service as a whole) and only then the per-user bucket (protects against one account hammering
+ *  its own share) — whichever trips first is reported, so the caller always gets one answer. */
+export function checkUserAndGlobalRateLimit(config: DualRateLimitConfig): RateLimitResult {
+  const globalResult = checkRateLimit(`global:${config.scope}`, config.globalWindowMs, config.globalMax);
+  if (!globalResult.allowed) return globalResult;
+  return checkRateLimit(`user:${config.scope}:${config.userId}`, config.userWindowMs, config.userMax);
+}
+
 /** Best-effort client identifier for rate-limit keying — trusts x-forwarded-for since this app
  *  is expected to run behind a reverse proxy/platform load balancer in production; falls back to
  *  a shared bucket if absent (e.g. direct local access), which just means local requests share
