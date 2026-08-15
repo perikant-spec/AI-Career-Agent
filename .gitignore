@@ -30,10 +30,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files — never commit real secrets; .env.example is documentation and is explicitly
-# un-ignored below
+# env files — never commit real secrets; the per-environment .example templates are
+# documentation and are explicitly un-ignored below
 .env*
 !.env.example
+!.env.staging.example
+!.env.production.example
 
 # sqlite dev database (legacy — production uses Postgres, see DATABASE_URL)
 /prisma/*.db
