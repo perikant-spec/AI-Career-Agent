@@ -13,6 +13,9 @@ import { prepareForInterview } from "@/lib/assistant/intents/prepareForInterview
 import { whyNotHearingBack } from "@/lib/assistant/intents/whyNotHearingBack";
 import { checkUserAndGlobalRateLimit, rateLimitResponse } from "@/lib/security/rateLimit";
 import { RATE_LIMITS } from "@/lib/security/rateLimits.config";
+import { checkAIBudget } from "@/lib/ai/usageLimits";
+import { withUsageTracking, summarizeUsage } from "@/lib/ai/usageTracking";
+import { estimateCostUsd } from "@/lib/ai/pricing";
 
 const chatSchema = z.object({ message: z.string().trim().min(1).max(1000) });
 
@@ -22,6 +25,11 @@ export async function POST(request: Request) {
 
   const rate = checkUserAndGlobalRateLimit({ scope: "assistantChat", userId, ...RATE_LIMITS.assistantChat });
   if (!rate.allowed) return rateLimitResponse(rate.retryAfterSeconds!);
+
+  const budget = await checkAIBudget(userId);
+  if (!budget.allowed) {
+    return NextResponse.json({ error: budget.reason }, { status: 429 });
+  }
 
   const body = await request.json().catch(() => null);
   const parsed = chatSchema.safeParse(body);
@@ -63,11 +71,15 @@ export async function POST(request: Request) {
   const provider = getAIProvider();
   let reply: string;
   let status: "SUCCESS" | "ERROR" = "SUCCESS";
+  let chatUsage;
   try {
-    reply = await provider.generateAssistantReply(intent, toolResults);
+    const tracked = await withUsageTracking(() => provider.generateAssistantReply(intent, toolResults));
+    reply = tracked.result;
+    chatUsage = summarizeUsage(tracked.usage);
   } catch {
     status = "ERROR";
     reply = "Something went wrong answering that. Your data wasn't changed — try again.";
+    chatUsage = summarizeUsage([]);
   }
 
   await prisma.aIInteraction.create({
@@ -79,6 +91,9 @@ export async function POST(request: Request) {
       inputRef: parsed.data.message.slice(0, 200),
       outputRef: JSON.stringify(toolResults).slice(0, 500),
       status,
+      inputTokens: chatUsage.inputTokens,
+      outputTokens: chatUsage.outputTokens,
+      estimatedCostUsd: estimateCostUsd(chatUsage.model, chatUsage.inputTokens, chatUsage.outputTokens),
     },
   });
 

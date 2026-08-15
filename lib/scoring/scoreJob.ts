@@ -20,6 +20,8 @@ import {
 import { computeDisqualifiers, type Disqualifier } from "./disqualifiers";
 import { CATEGORY_WEIGHTS } from "./weights";
 import { deriveRecommendation } from "./tiers";
+import { withUsageTracking, summarizeUsage } from "@/lib/ai/usageTracking";
+import { estimateCostUsd } from "@/lib/ai/pricing";
 
 export interface ComputedMatchScore {
   overallScore: number;
@@ -116,6 +118,7 @@ export async function scoreJobForUser(userId: string, jobId: string): Promise<Pe
   let strengths: string[] = [];
   let gaps: string[] = [];
   let rationaleStatus: "SUCCESS" | "ERROR" = "SUCCESS";
+  let usage = summarizeUsage([]);
 
   try {
     if (computed.disqualifiers.length > 0) {
@@ -123,11 +126,15 @@ export async function scoreJobForUser(userId: string, jobId: string): Promise<Pe
         disqualifiers: computed.disqualifiers,
         wouldHaveScored: computed.overallScore,
       };
-      const result = await provider.generateRationale({
-        kind: "DISQUALIFIER_EXPLANATION",
-        citedEntities,
-        facts: facts as unknown as Record<string, unknown>,
-      });
+      const tracked = await withUsageTracking(() =>
+        provider.generateRationale({
+          kind: "DISQUALIFIER_EXPLANATION",
+          citedEntities,
+          facts: facts as unknown as Record<string, unknown>,
+        })
+      );
+      usage = summarizeUsage(tracked.usage);
+      const result = tracked.result;
       const { valid } = validateCitations(result.citedEntityIds, allowedEntityIds);
       gaps = [valid ? result.text : "Disqualified — see the checklist for specifics."];
       strengths = [];
@@ -143,11 +150,15 @@ export async function scoreJobForUser(userId: string, jobId: string): Promise<Pe
         locationSummary: computed.categoryFacts.location.locationSummary as string | undefined,
         compensationSummary: computed.categoryFacts.compensation.compensationSummary as string | undefined,
       };
-      const result = await provider.generateRationale({
-        kind: "MATCH_STRENGTHS_GAPS",
-        citedEntities,
-        facts: facts as unknown as Record<string, unknown>,
-      });
+      const tracked = await withUsageTracking(() =>
+        provider.generateRationale({
+          kind: "MATCH_STRENGTHS_GAPS",
+          citedEntities,
+          facts: facts as unknown as Record<string, unknown>,
+        })
+      );
+      usage = summarizeUsage(tracked.usage);
+      const result = tracked.result;
       const { valid } = validateCitations(result.citedEntityIds, allowedEntityIds);
       strengths = valid ? result.structured?.strengths ?? [] : [];
       gaps = valid ? result.structured?.gaps ?? [] : [];
@@ -165,6 +176,9 @@ export async function scoreJobForUser(userId: string, jobId: string): Promise<Pe
       inputRef: jobId,
       outputRef: `score=${computed.overallScore} tier=${computed.recommendationTier}`,
       status: rationaleStatus,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      estimatedCostUsd: estimateCostUsd(usage.model, usage.inputTokens, usage.outputTokens),
     },
   });
 

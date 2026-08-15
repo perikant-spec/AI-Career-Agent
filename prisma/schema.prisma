@@ -385,11 +385,19 @@ model AIInteraction {
 
   toolName        String // "resume.extract" | "job.extract" | "match.score" | "assistant.<intent>"
   provider        String // "mock" | "anthropic"
-  providerVersion String?
+  providerVersion String? // the model name for real AI calls, e.g. "claude-sonnet-5" — null for the mock provider, which makes no real model call
   inputRef        String // id/hash reference, not full payload
   outputRef       String
   status          String // SUCCESS | ERROR
   errorMessage    String?
+
+  // Token/cost tracking (AI cost control) — all null for mock-provider rows, since there is no
+  // real API call or cost to record. Populated from the Anthropic SDK's own response.usage via
+  // lib/ai/usageTracking.ts; estimatedCostUsd is a directional estimate (lib/ai/pricing.ts), not
+  // an exact invoice line.
+  inputTokens      Int?
+  outputTokens     Int?
+  estimatedCostUsd Float?
 
   createdAt DateTime @default(now())
 

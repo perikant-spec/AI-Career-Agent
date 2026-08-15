@@ -5,6 +5,8 @@ import type { JobRequirements, ApplicationAnswerItem } from "@/lib/ai/types";
 import { buildApplicationFacts } from "./facts";
 import { DEFAULT_APPLICATION_QUESTIONS } from "./questions";
 import { generateResumeVersion } from "@/lib/resume/generateResumeVersion";
+import { withUsageTracking, summarizeUsage } from "@/lib/ai/usageTracking";
+import { estimateCostUsd } from "@/lib/ai/pricing";
 
 const FALLBACK_ANSWER =
   "I couldn't generate a grounded answer here from your verified profile — worth writing this one yourself.";
@@ -63,8 +65,11 @@ export async function ensureApplicationPackage(
     if (needsCoverLetter) {
       let status: "SUCCESS" | "ERROR" = "SUCCESS";
       let coverLetter: CoverLetterContent;
+      let coverLetterUsage = summarizeUsage([]);
       try {
-        const result = await provider.generateCoverLetter(facts);
+        const tracked = await withUsageTracking(() => provider.generateCoverLetter(facts));
+        coverLetterUsage = summarizeUsage(tracked.usage);
+        const result = tracked.result;
         const { valid } = validateCitations(result.citedEntityIds, allowedIds);
         coverLetter = valid
           ? { content: result.content, citedEntityIds: result.citedEntityIds }
@@ -84,6 +89,9 @@ export async function ensureApplicationPackage(
           inputRef: jobId,
           outputRef: coverLetter.content.slice(0, 200),
           status,
+          inputTokens: coverLetterUsage.inputTokens,
+          outputTokens: coverLetterUsage.outputTokens,
+          estimatedCostUsd: estimateCostUsd(coverLetterUsage.model, coverLetterUsage.inputTokens, coverLetterUsage.outputTokens),
         },
       });
     }
@@ -91,11 +99,13 @@ export async function ensureApplicationPackage(
     if (needsQa) {
       let status: "SUCCESS" | "ERROR" = "SUCCESS";
       let answers: ApplicationAnswerItem[];
+      let qaUsage = summarizeUsage([]);
       try {
-        const result = await provider.generateApplicationAnswers({
-          ...facts,
-          questions: [...DEFAULT_APPLICATION_QUESTIONS],
-        });
+        const tracked = await withUsageTracking(() =>
+          provider.generateApplicationAnswers({ ...facts, questions: [...DEFAULT_APPLICATION_QUESTIONS] })
+        );
+        qaUsage = summarizeUsage(tracked.usage);
+        const result = tracked.result;
         answers = result.answers.map((a) => {
           const { valid } = validateCitations(a.citedEntityIds, allowedIds);
           if (!valid) status = "ERROR";
@@ -122,6 +132,9 @@ export async function ensureApplicationPackage(
           inputRef: jobId,
           outputRef: `answers=${answers.length}`,
           status,
+          inputTokens: qaUsage.inputTokens,
+          outputTokens: qaUsage.outputTokens,
+          estimatedCostUsd: estimateCostUsd(qaUsage.model, qaUsage.inputTokens, qaUsage.outputTokens),
         },
       });
     }
