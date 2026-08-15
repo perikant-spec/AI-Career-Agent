@@ -1,3 +1,5 @@
+import { getAppEnv } from "@/lib/env";
+
 // In-memory fixed-window rate limiter — deliberately the simplest thing that actually works for
 // a single-instance deployment, same "MVP timer, not a distributed system" pattern used
 // elsewhere (Follow-Up Engine, mobile JWT TTL). A multi-instance production deployment would
@@ -27,12 +29,17 @@ export interface RateLimitResult {
   retryAfterSeconds?: number;
 }
 
-// Test/local-dev escape hatch only — lets integration tests register many accounts in a tight
-// loop without tripping the same limits a real attacker would hit. Double-gated on NODE_ENV so a
-// misconfigured production environment variable can't silently disable rate limiting: even if
-// RATE_LIMIT_DISABLED is accidentally set to "true" in production, this stays a no-op there.
+// Test/local-dev/CI escape hatch only — lets integration tests register many accounts in a
+// tight loop without tripping the same limits a real attacker would hit. Double-gated on
+// getAppEnv() (lib/env.ts), not NODE_ENV, so a misconfigured production environment variable
+// can't silently disable rate limiting: even if RATE_LIMIT_DISABLED is accidentally set to
+// "true" in production, this stays a no-op there. NODE_ENV alone can't make this distinction —
+// `next start` always sets NODE_ENV=production even for a CI job testing that production build
+// against local infrastructure (see .github/workflows/ci.yml's integration-tests job, which sets
+// APP_ENV=development precisely so this escape hatch still works there); APP_ENV is the actual
+// "is this a real production deployment" signal.
 function isRateLimitDisabledForTests(): boolean {
-  return process.env.RATE_LIMIT_DISABLED === "true" && process.env.NODE_ENV !== "production";
+  return process.env.RATE_LIMIT_DISABLED === "true" && getAppEnv() !== "production";
 }
 
 export function checkRateLimit(key: string, windowMs: number, max: number): RateLimitResult {

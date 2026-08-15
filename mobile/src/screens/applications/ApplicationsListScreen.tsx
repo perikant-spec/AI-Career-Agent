@@ -41,7 +41,7 @@ export function ApplicationsListScreen({
   return (
     <Screen scroll={false}>
       <Text style={styles.title}>Applications</Text>
-      <Text style={styles.subtitle}>Every job you've moved into the pipeline.</Text>
+      <Text style={styles.subtitle}>Every job you&apos;ve moved into the pipeline.</Text>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -52,7 +52,7 @@ export function ApplicationsListScreen({
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} />}
         ListEmptyComponent={
           !loading ? (
-            <Text style={styles.empty}>No applications yet — prepare one from a job's detail page.</Text>
+            <Text style={styles.empty}>No applications yet — prepare one from a job&apos;s detail page.</Text>
           ) : null
         }
         renderItem={({ item }) => (
