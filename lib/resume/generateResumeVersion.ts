@@ -7,6 +7,7 @@ import { buildDeterministicCustomization, type ChangeLogEntry, type TailoredExpe
 import { computeAtsScore } from "./atsScore";
 import { withUsageTracking, summarizeUsage } from "@/lib/ai/usageTracking";
 import { estimateCostUsd } from "@/lib/ai/pricing";
+import { validateGeneratedClaims } from "@/lib/evidence/claimValidator";
 
 const USABLE_CONFIDENCE = new Set<ConfidenceLevel>(["VERIFIED", "SUPPORTED_INFERENCE"]);
 
@@ -76,8 +77,15 @@ export async function generateResumeVersion(userId: string, jobId: string): Prom
       const result = tracked.result;
 
       const { valid } = validateCitations(result.citedEntityIds, allowedIds);
-      if (valid && result.tailoredSummary.trim()) {
-        tailoredSummary = result.tailoredSummary.trim();
+      const trimmed = result.tailoredSummary.trim();
+      // Citation-id validity proves the model referenced a real entity; it doesn't prove the
+      // sentence it wrote stayed within what that entity actually says. This second, independent
+      // check catches a fabricated number or skill slipped into an otherwise-valid citation.
+      const allowedSourceText = [originalSummary, deterministic.topRelevantBullet.text, job.title ?? ""].join("\n");
+      const claimCheck = trimmed ? validateGeneratedClaims(trimmed, allowedSourceText) : { valid: false, unsupportedNumbers: [], unsupportedSkills: [] };
+
+      if (valid && trimmed && claimCheck.valid) {
+        tailoredSummary = trimmed;
         changeLog.push({
           kind: "REWORDED",
           text: "Summary now folds in your most relevant experience for this role.",
