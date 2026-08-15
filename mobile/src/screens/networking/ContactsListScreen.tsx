@@ -36,7 +36,7 @@ export function ContactsListScreen({
   return (
     <Screen scroll={false}>
       <Text style={styles.title}>Networking</Text>
-      <Text style={styles.subtitle}>Contacts surfaced for the roles you're pursuing.</Text>
+      <Text style={styles.subtitle}>Contacts surfaced for the roles you&apos;re pursuing.</Text>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 

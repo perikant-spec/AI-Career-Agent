@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   checkRateLimit,
   checkUserAndGlobalRateLimit,
@@ -85,6 +85,47 @@ describe("checkUserAndGlobalRateLimit", () => {
     expect(checkUserAndGlobalRateLimit(configA).allowed).toBe(true);
     expect(checkUserAndGlobalRateLimit(configA).allowed).toBe(false); // scope-a now exhausted for this user
     expect(checkUserAndGlobalRateLimit(configB).allowed).toBe(true); // scope-b is untouched
+  });
+});
+
+describe("RATE_LIMIT_DISABLED escape hatch — gated on APP_ENV, not NODE_ENV", () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    __resetRateLimitStateForTests();
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+    vi.unstubAllEnvs();
+  });
+
+  it("RATE_LIMIT_DISABLED has no effect when APP_ENV=production, even if NODE_ENV is not production", () => {
+    process.env.APP_ENV = "production";
+    process.env.RATE_LIMIT_DISABLED = "true";
+    vi.stubEnv("NODE_ENV", "test"); // vitest's own ambient NODE_ENV — deliberately not "production"
+
+    for (let i = 0; i < 5; i++) checkRateLimit("prod-gate-key", 60_000, 5);
+    expect(checkRateLimit("prod-gate-key", 60_000, 5).allowed).toBe(false);
+  });
+
+  it("RATE_LIMIT_DISABLED takes effect when APP_ENV=development, even though `next start`-style NODE_ENV=production", () => {
+    process.env.APP_ENV = "development";
+    process.env.RATE_LIMIT_DISABLED = "true";
+    vi.stubEnv("NODE_ENV", "production"); // mirrors `next start` in CI's integration-tests job
+
+    for (let i = 0; i < 10; i++) {
+      expect(checkRateLimit("ci-gate-key", 60_000, 5).allowed).toBe(true);
+    }
+  });
+
+  it("RATE_LIMIT_DISABLED is inert when unset, regardless of APP_ENV", () => {
+    process.env.APP_ENV = "development";
+    delete process.env.RATE_LIMIT_DISABLED;
+
+    for (let i = 0; i < 5; i++) checkRateLimit("unset-gate-key", 60_000, 5);
+    expect(checkRateLimit("unset-gate-key", 60_000, 5).allowed).toBe(false);
   });
 });
 

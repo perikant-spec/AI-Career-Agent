@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import type { LegalDocument } from "@/lib/legal/documents";
 
@@ -8,9 +9,9 @@ export function LegalDocPage({ doc }: { doc: LegalDocument }) {
   return (
     <div className="min-h-screen bg-bg flex justify-center px-6 py-14">
       <div className="w-full max-w-[640px]">
-        <a href="/" className="text-[13px] text-ink-tertiary hover:text-ink-secondary">
+        <Link href="/" className="text-[13px] text-ink-tertiary hover:text-ink-secondary">
           ← Back
-        </a>
+        </Link>
         <Card className="p-7 mt-4">
           <h1 className="font-serif text-[26px]">{doc.title}</h1>
           <div className="text-[12px] text-ink-quaternary mt-1 font-mono">Version: {doc.version}</div>

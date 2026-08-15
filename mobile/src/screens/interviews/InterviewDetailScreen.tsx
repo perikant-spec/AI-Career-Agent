@@ -174,7 +174,7 @@ export function InterviewDetailScreen({
     return (
       <Screen>
         <Text style={styles.empty}>
-          This application isn't at an interview stage yet, so there's no prep to show.
+          This application isn&apos;t at an interview stage yet, so there&apos;s no prep to show.
         </Text>
       </Screen>
     );

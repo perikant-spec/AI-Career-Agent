@@ -53,7 +53,7 @@ export function HomeScreen() {
   return (
     <Screen>
       <Text style={styles.greeting}>Hi {firstName}</Text>
-      <Text style={styles.subtitle}>Here's where your job search stands today.</Text>
+      <Text style={styles.subtitle}>Here&apos;s where your job search stands today.</Text>
 
       <View style={styles.tileRow}>
         <StatTile value={jobsData?.jobs.length ?? "—"} label="Jobs tracked" />

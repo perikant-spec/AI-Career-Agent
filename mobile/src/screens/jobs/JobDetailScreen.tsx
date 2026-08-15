@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, type NavigationProp } from "@react-navigation/native";
 import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
@@ -11,7 +11,7 @@ import { colors, fonts } from "@/theme/tokens";
 import { useApiQuery } from "@/api/useApiQuery";
 import { apiFetch } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
-import type { JobsStackParamList } from "@/navigation/types";
+import type { JobsStackParamList, MainTabParamList } from "@/navigation/types";
 
 const CATEGORY_LABELS: Record<string, string> = {
   skills: "Skills",
@@ -55,7 +55,7 @@ interface JobDetailResponse {
 
 export function JobDetailScreen({ route }: NativeStackScreenProps<JobsStackParamList, "JobDetail">) {
   const { jobId } = route.params;
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<NavigationProp<MainTabParamList>>();
   const { token } = useAuth();
   const { data, loading, error } = useApiQuery<JobDetailResponse>(`/api/jobs/${jobId}`);
   const [preparing, setPreparing] = useState(false);
