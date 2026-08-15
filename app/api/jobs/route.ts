@@ -5,6 +5,8 @@ import { resolveUserId } from "@/lib/auth/resolveUserId";
 import { extractJobRequirements } from "@/lib/jobs/extractJob";
 import { scoreJobForUser } from "@/lib/scoring/scoreJob";
 import { assertJobImportAllowed } from "@/lib/billing/entitlements";
+import { checkUserAndGlobalRateLimit, rateLimitResponse } from "@/lib/security/rateLimit";
+import { RATE_LIMITS } from "@/lib/security/rateLimits.config";
 
 const createSchema = z.object({
   rawText: z.string().trim().min(10, "Paste the full job posting text — that was too short."),
@@ -51,6 +53,9 @@ export async function POST(request: Request) {
   }
 
   const { rawText, sourceRef } = parsed.data;
+
+  const rate = checkUserAndGlobalRateLimit({ scope: "jobImport", userId, ...RATE_LIMITS.jobImport });
+  if (!rate.allowed) return rateLimitResponse(rate.retryAfterSeconds!);
 
   const gate = await assertJobImportAllowed(userId);
   if (!gate.allowed) {

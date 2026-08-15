@@ -6,6 +6,8 @@ import { isAdzunaConfigured, searchAdzuna } from "@/lib/jobs/sources/adzuna";
 import { extractJobRequirements } from "@/lib/jobs/extractJob";
 import { scoreJobForUser } from "@/lib/scoring/scoreJob";
 import { assertJobImportAllowed } from "@/lib/billing/entitlements";
+import { checkUserAndGlobalRateLimit, rateLimitResponse } from "@/lib/security/rateLimit";
+import { RATE_LIMITS } from "@/lib/security/rateLimits.config";
 
 const searchSchema = z.object({
   what: z.string().trim().max(200).optional(),
@@ -16,6 +18,9 @@ export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const userId = session.user.id;
+
+  const rate = checkUserAndGlobalRateLimit({ scope: "jobImportAdzuna", userId, ...RATE_LIMITS.jobImportAdzuna });
+  if (!rate.allowed) return rateLimitResponse(rate.retryAfterSeconds!);
 
   if (!isAdzunaConfigured()) {
     // Never silently attempted — the caller (Settings page) checks /api/job-sources first, but

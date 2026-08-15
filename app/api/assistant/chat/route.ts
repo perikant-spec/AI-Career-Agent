@@ -11,12 +11,17 @@ import { haveIAppliedBefore } from "@/lib/assistant/intents/haveIAppliedBefore";
 import { findContact } from "@/lib/assistant/intents/findContact";
 import { prepareForInterview } from "@/lib/assistant/intents/prepareForInterview";
 import { whyNotHearingBack } from "@/lib/assistant/intents/whyNotHearingBack";
+import { checkUserAndGlobalRateLimit, rateLimitResponse } from "@/lib/security/rateLimit";
+import { RATE_LIMITS } from "@/lib/security/rateLimits.config";
 
 const chatSchema = z.object({ message: z.string().trim().min(1).max(1000) });
 
 export async function POST(request: Request) {
   const userId = await resolveUserId(request);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const rate = checkUserAndGlobalRateLimit({ scope: "assistantChat", userId, ...RATE_LIMITS.assistantChat });
+  if (!rate.allowed) return rateLimitResponse(rate.retryAfterSeconds!);
 
   const body = await request.json().catch(() => null);
   const parsed = chatSchema.safeParse(body);

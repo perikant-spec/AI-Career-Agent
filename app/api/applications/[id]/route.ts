@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { resolveUserId } from "@/lib/auth/resolveUserId";
 import { ensureApplicationPackage } from "@/lib/application/generateApplicationPackage";
 import { assertProFeature } from "@/lib/billing/entitlements";
+import { checkUserAndGlobalRateLimit, rateLimitResponse } from "@/lib/security/rateLimit";
+import { RATE_LIMITS } from "@/lib/security/rateLimits.config";
 
 function serialize(app: {
   id: string;
@@ -101,6 +103,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (!gate.allowed) {
       return NextResponse.json({ error: gate.reason, upgradeRequired: true }, { status: 402 });
     }
+
+    const rate = checkUserAndGlobalRateLimit({ scope: "applicationGeneration", userId, ...RATE_LIMITS.applicationGeneration });
+    if (!rate.allowed) return rateLimitResponse(rate.retryAfterSeconds!);
 
     const piece = parsed.data.regenerate;
     await ensureApplicationPackage(userId, existing.jobId, {
