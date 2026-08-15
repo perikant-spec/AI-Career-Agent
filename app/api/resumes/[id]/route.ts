@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { storage } from "@/lib/storage/localDisk";
+import { getStorageProvider } from "@/lib/storage";
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -14,7 +14,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (!resume) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   await prisma.resumeDocument.delete({ where: { id } });
-  await storage.delete(resume.storageKey).catch(() => {
+  await getStorageProvider().delete(resume.storageKey).catch(() => {
     // File may already be gone — deleting the DB record is the source of truth for the user.
   });
 

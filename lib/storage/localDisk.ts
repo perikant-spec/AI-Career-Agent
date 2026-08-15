@@ -12,7 +12,7 @@ function sanitizeFileName(fileName: string): string {
 }
 
 class LocalDiskStorage implements StorageProvider {
-  async put({ userId, fileName, data }: { userId: string; fileName: string; data: Buffer }) {
+  async put({ userId, fileName, data }: { userId: string; fileName: string; mimeType: string; data: Buffer }) {
     const userDir = path.join(UPLOAD_ROOT, userId);
     await fs.mkdir(userDir, { recursive: true });
 
@@ -37,6 +37,14 @@ class LocalDiskStorage implements StorageProvider {
     const userDir = path.join(UPLOAD_ROOT, userId);
     if (!userDir.startsWith(UPLOAD_ROOT)) throw new Error("Invalid user id.");
     await fs.rm(userDir, { recursive: true, force: true });
+  }
+
+  /** Local disk has no signed-URL concept — this is a dev-only provider never meant to serve
+   *  files directly to a client. Throws loudly rather than returning a fake/broken URL. */
+  async getSignedDownloadUrl(): Promise<string> {
+    throw new Error(
+      "getSignedDownloadUrl is not supported by the local-disk storage provider — configure S3_BUCKET to use the production S3-compatible provider."
+    );
   }
 
   /** Rejects any storageKey that would escape UPLOAD_ROOT (e.g. via `../`). */
