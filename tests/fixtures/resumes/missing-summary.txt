@@ -1,0 +1,11 @@
+Experience
+Data Analyst, Contoso Ltd
+July 2022 - Present
+- Built dashboards in Tableau tracking weekly active users.
+- Automated a reporting pipeline in Python, saving 5 hours a week.
+
+Education
+Bachelor of Arts in Economics, Riverside College
+
+Skills
+SQL, Tableau, Python, data visualization, Excel

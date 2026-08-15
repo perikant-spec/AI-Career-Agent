@@ -1,0 +1,19 @@
+Jordan Lee
+
+Summary
+Engineering leader with a decade of experience across fintech and healthcare.
+
+Experience
+Engineering Manager, Northwind Health
+January 2020 - Present
+- Led a platform migration to Kubernetes.
+
+Staff Engineer, Fintek Solutions
+March 2019 - June 2021
+- Built the payments reconciliation service.
+
+Education
+Master of Science in Computer Science, Tech Institute
+
+Skills
+Kubernetes, AWS, system design, team leadership

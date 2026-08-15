@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ai-career-agent-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "mobile-expo-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "web", "--prefix", "mobile", "--", "--port", "8081"],
+      "port": 8081
+    }
+  ]
+}

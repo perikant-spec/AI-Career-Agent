@@ -1,0 +1,26 @@
+Peri Anand
+peri.anand@example.com · (555) 123-4567
+
+Summary
+Product manager with 6 years in B2B SaaS, focused on onboarding and activation.
+
+Experience
+Senior Product Manager, Acme Inc.
+March 2021 - Present
+- Ran onboarding experiments that lifted activation 18%.
+- Owned the activation roadmap across three squads.
+- Managed 2 direct reports and the customer support handoff.
+
+Product Manager, Globex Corp
+June 2018 - February 2021
+- Launched the self-serve billing flow, reducing support tickets 30%.
+- Led cross-functional planning with design and engineering.
+
+Education
+Bachelor of Science in Computer Science, State University
+
+Skills
+Product management, roadmapping, SQL, stakeholder management, Jira, A/B testing
+
+Certifications
+Certified Scrum Master

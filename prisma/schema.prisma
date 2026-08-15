@@ -1,0 +1,420 @@
+// Enum-like fields are modeled as String (not Prisma `enum`) — SQLite/Postgres enum support
+// diverges, and the single source of truth is the TS unions in lib/types/enums.ts. This keeps
+// "swap SQLite for Postgres later" a one-line datasource change, not a migration rewrite.
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Only ever a bcrypt hash of the emailed token, never the raw token itself — same rule as
+  // passwordHash. Single-use: cleared the moment a reset succeeds.
+  passwordResetTokenHash      String?
+  passwordResetTokenExpiresAt DateTime?
+
+  resumes               ResumeDocument[]
+  profileEntries        CareerProfileEntry[]
+  jobs                  Job[]
+  matchScores           MatchScore[]
+  resumeVersions        ResumeVersion[]
+  applications          Application[]
+  contacts              Contact[]
+  outreachMessages      OutreachMessage[]
+  followUps             FollowUp[]
+  interviewPreps        InterviewPrep[]
+  mockInterviewAttempts MockInterviewAttempt[]
+  preferences           UserPreferences?
+  aiInteractions   AIInteraction[]
+  subscription          Subscription?
+}
+
+model ResumeDocument {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileName         String
+  storageKey       String
+  mimeType         String
+  fileSizeBytes    Int
+  rawText          String   @default("")
+  extractionStatus String   @default("PENDING") // PENDING | SUCCESS | PARTIAL | FAILED | UNSUPPORTED_FORMAT
+  extractionError  String?
+  isMaster         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  profileEntries CareerProfileEntry[]
+
+  @@index([userId])
+}
+
+model CareerProfileEntry {
+  id               String          @id @default(cuid())
+  userId           String
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceDocumentId String?
+  sourceDocument   ResumeDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+
+  section        String // SUMMARY | SKILL | EXPERIENCE | EDUCATION | CERTIFICATION | ACHIEVEMENT
+  label          String?
+  value          String
+  structuredData String? // JSON string, shape varies by section (e.g. experience bullets/dates)
+
+  confidence      String // VERIFIED | SUPPORTED_INFERENCE | NOT_VERIFIED | MISSING
+  basisText       String? // inference rationale — always shown as inference, never as fact
+  sourceSpanStart Int?
+  sourceSpanEnd   Int?
+  sourceSpanText  String? // snapshotted exact substring, survives later resume edits
+
+  orderIndex    Int     @default(0)
+  userConfirmed Boolean @default(false)
+  userEdited    Boolean @default(false)
+
+  createdAt DateTime @updatedAt
+  updatedAt DateTime @default(now())
+
+  @@index([userId, section])
+}
+
+model Job {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  source       String // MANUAL_PASTE | ADZUNA
+  sourceRef    String? // URL or external id — reference only, never fetched server-side for MANUAL_PASTE
+  rawText      String
+  title        String?
+  company      String?
+  locationText String?
+
+  parsedRequirements   String? // JSON string: JobRequirements shape
+  extractionConfidence String? // overall confidence — forced low for sparse postings
+
+  createdAt DateTime @default(now())
+
+  matchScores    MatchScore[]
+  resumeVersions ResumeVersion[]
+  applications   Application[]
+  contacts       Contact[]
+
+  @@index([userId])
+}
+
+model MatchScore {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId  String
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  overallScore   Int
+  categoryScores String // JSON: {skills, experience, seniority, industry, location, compensation, educationCertification, careerTrajectory}
+  strengths      String // JSON string[]
+  gaps           String // JSON string[]
+  risks          String // JSON string[]
+  disqualifiers  String // JSON string[] of {code, reason} — [] if none
+
+  recommendationTier String // APPLY_STRONG | APPLY | APPLY_IF_INTERESTED | LOW_PRIORITY | DONT_APPLY
+  confidenceNote     String? // e.g. "sparse job posting text"
+  profileVersionHash String // detects staleness -> triggers recompute
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, jobId])
+}
+
+model ResumeVersion {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId  String
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  // The customizer only ever reorders/rephrases entities that exist in the master resume — this
+  // column is a snapshot of that output, not a freeform document, so "no new entity introduced"
+  // stays structurally checkable later if needed.
+  content   String // JSON: TailoredResumeContent shape (see lib/resume/customize.ts)
+  changeLog String // JSON: Array<{ kind: string; text: string }>
+
+  atsScoreBefore Int
+  atsScoreAfter  Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, jobId])
+}
+
+model Application {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId  String
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  // DISCOVERED | SHORTLISTED | PREPARING | READY_TO_APPLY | APPLIED | RECRUITER_CONTACT |
+  // SCREENING | INTERVIEW | FINAL_INTERVIEW | OFFER | ACCEPTED | REJECTED | WITHDRAWN
+  // Always user-driven — nothing here is ever set by a silent automated transition.
+  status String @default("DISCOVERED")
+
+  coverLetterContent String? // JSON: { text: string; citedEntityIds: string[] }
+  qaAnswers          String? // JSON: Array<{ question: string; answer: string; citedEntityIds: string[] }>
+
+  resumeApproved      Boolean @default(false)
+  coverLetterApproved Boolean @default(false)
+  qaApproved          Boolean @default(false)
+
+  notes String?
+
+  discoveredAt DateTime  @default(now())
+  appliedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  followUps     FollowUp[]
+  interviewPrep InterviewPrep?
+
+  @@unique([userId, jobId])
+  @@index([userId, status])
+}
+
+model FollowUp {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  dueDate DateTime
+
+  // PENDING | COMPLETED | DISMISSED — always user-driven; "due" is computed at read time
+  // (dueDate <= now) rather than by any background job, since none exists in this build.
+  status String @default("PENDING")
+
+  draftedMessage String? // JSON: { content: string; citedEntityIds: string[] }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status, dueDate])
+}
+
+model InterviewPrep {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  // JSON: Array<{ label: string; text: string }> — deterministically extracted from the job
+  // posting's own raw text (mission/team/stack mentions), never fabricated general-knowledge
+  // facts about the company. No web research/scraping capability exists in this build.
+  companyResearch String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  questions InterviewQuestion[]
+}
+
+model InterviewQuestion {
+  id              String        @id @default(cuid())
+  interviewPrepId String
+  interviewPrep   InterviewPrep @relation(fields: [interviewPrepId], references: [id], onDelete: Cascade)
+
+  // BEHAVIORAL | TECHNICAL | ROLE_SPECIFIC | LEADERSHIP | COMPANY_FIT
+  category String
+  question String
+  orderIndex Int @default(0)
+
+  // STAR breakdown — entirely deterministic (lib/interview/starAnswers.ts), not AI-generated:
+  // Situation/Task come from the resume's own structured experience data (company/title/dates),
+  // Action is the cited bullet's verbatim text, Result is only populated when that bullet
+  // contains an extractable number/metric — otherwise left null and shown as "not specified"
+  // rather than invented.
+  starSituation String?
+  starTask      String?
+  starAction    String?
+  starResult    String?
+  citedEntityIds String // JSON string[] — empty if no verified evidence was available
+
+  rehearsed Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mockAttempts MockInterviewAttempt[]
+
+  @@index([interviewPrepId])
+}
+
+model MockInterviewAttempt {
+  id                  String            @id @default(cuid())
+  userId              String
+  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interviewQuestionId String
+  interviewQuestion   InterviewQuestion @relation(fields: [interviewQuestionId], references: [id], onDelete: Cascade)
+
+  responseText String
+
+  // 0-100 each. Scored on the response's own structure/content only — the rubric never asks
+  // the AI to claim anything about the candidate beyond what's in the typed response.
+  scoreRelevance    Int
+  scoreClarity      Int
+  scoreStructure    Int
+  scoreCompleteness Int
+  feedback          String
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, interviewQuestionId])
+}
+
+model Contact {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId  String
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  name String
+  role String?
+
+  // HIRING_MANAGER | RECRUITER | TEAM_LEAD | EXISTING_CONNECTION | REFERRAL | OTHER
+  contactType String @default("OTHER")
+
+  // USER_SUPPLIED is the only source implemented — licensed contact enrichment (Apollo/Hunter/
+  // ContactOut) is real per the PRD but needs an account we can't create on the user's behalf;
+  // "PROVIDER_VERIFIED" is a valid future value with no code path that produces it today.
+  source String @default("USER_SUPPLIED")
+
+  // The user's own account of how/why this person is relevant — never an AI-inferred guess.
+  // The co-founder analysis explicitly flags inferred contacts as something that "probably
+  // shouldn't be shown at all without a verification path" — so nothing here is inferred.
+  relationshipNote String?
+
+  // 0-100, user-set; null = not rated. Never computed from scraped/enriched signals we don't have.
+  warmth Int?
+
+  profileUrl String? // user-supplied LinkedIn profile URL — never fetched server-side
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages OutreachMessage[]
+
+  @@index([userId, jobId])
+}
+
+model OutreachMessage {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  // CONNECTION_REQUEST | AFTER_CONNECT | RECRUITER_MESSAGE | HIRING_MANAGER_MESSAGE |
+  // REFERRAL_ASK | FOLLOW_UP
+  messageType String
+
+  content        String
+  citedEntityIds String // JSON string[]
+
+  // DRAFT | SENT — SENT is only ever set by an explicit "mark as sent" user action, never by
+  // this app actually sending anything. No code path here calls any messaging API.
+  status String    @default("DRAFT")
+  sentAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([contactId, messageType])
+  @@index([userId, contactId])
+}
+
+model UserPreferences {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  targetTitles      String? // JSON string[]
+  targetLocations   String? // JSON string[]
+  salaryFloor       Int?
+  workAuthorization String?
+
+  // Days after applying before a follow-up is due. User-configurable; PRD's "MVP: manual
+  // timers" — this is a fixed offset computed once at Applied time, not a smart/adaptive one.
+  followUpDays Int @default(7)
+
+  updatedAt DateTime @updatedAt
+}
+
+model AIInteraction {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  toolName        String // "resume.extract" | "job.extract" | "match.score" | "assistant.<intent>"
+  provider        String // "mock" | "anthropic"
+  providerVersion String?
+  inputRef        String // id/hash reference, not full payload
+  outputRef       String
+  status          String // SUCCESS | ERROR
+  errorMessage    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// Every user has at most one Subscription row, created lazily (defaults to FREE/ACTIVE) the
+// first time entitlements are checked — there's no separate "sign up for free" step. Stripe
+// fields stay null until a real checkout completes; the webhook handler is the only writer of
+// stripe*/currentPeriodEnd/cancelAtPeriodEnd, never a client-facing route, so this table can
+// never drift from what Stripe actually thinks is true.
+model Subscription {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  plan   String @default("FREE") // FREE | PRO
+  status String @default("ACTIVE") // ACTIVE | TRIALING | PAST_DUE | CANCELED | INCOMPLETE
+
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  stripePriceId        String?
+
+  currentPeriodEnd  DateTime?
+  cancelAtPeriodEnd Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Written by the default "console" MailProvider (lib/mail/) in place of real email delivery —
+// no SMTP/Resend credentials exist in this environment. Swappable to a real provider later
+// without touching call sites; this table (and its /dev/outbox viewer) is dev/staging-only and
+// hard-guarded against ever rendering in a production build.
+model EmailLog {
+  id        String   @id @default(cuid())
+  to        String
+  subject   String
+  text      String
+  createdAt DateTime @default(now())
+
+  @@index([to, createdAt])
+}
