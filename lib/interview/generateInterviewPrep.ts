@@ -13,13 +13,18 @@ const STAR_SHAPED_CATEGORIES = new Set(["BEHAVIORAL", "TECHNICAL", "LEADERSHIP"]
  * pattern as the Follow-Up Engine's auto-scheduling.
  */
 export async function ensureInterviewPrep(userId: string, applicationId: string): Promise<string> {
-  const existing = await prisma.interviewPrep.findUnique({ where: { applicationId } });
-  if (existing) return existing.id;
-
+  // Every call site already re-validates applicationId ownership before reaching here, but this
+  // function is also the one place that reads/writes interview prep by applicationId alone (no
+  // userId in the unique constraint) — asserting ownership on the fast path too means a future
+  // caller can never accidentally hand back or build on top of another user's prep.
   const application = await prisma.application.findFirstOrThrow({
     where: { id: applicationId, userId },
     include: { job: true },
   });
+
+  const existing = await prisma.interviewPrep.findUnique({ where: { applicationId } });
+  if (existing) return existing.id;
+
   const profileEntries = await prisma.careerProfileEntry.findMany({ where: { userId } });
   const jobRequirements: JobRequirements = application.job.parsedRequirements
     ? JSON.parse(application.job.parsedRequirements)
