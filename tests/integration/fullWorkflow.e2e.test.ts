@@ -98,7 +98,7 @@ describe.runIf(await serverReachable())("Full acceptance workflow (signup -> tra
       const registerRes = await fetch(`${BASE_URL}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, name: "Jordan Rivera" }),
+        body: JSON.stringify({ email, password, name: "Jordan Rivera", acceptedLegal: true }),
       });
       expect(registerRes.status).toBe(201);
       const registerBody = await json<{ user: { id: string } }>(registerRes);

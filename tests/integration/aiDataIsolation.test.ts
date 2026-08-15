@@ -59,7 +59,7 @@ async function createIdentityViaHttp(label: string): Promise<{ userId: string; c
   const registerRes = await fetch(`${BASE_URL}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, acceptedLegal: true }),
   });
   const { user } = await json<{ user: { id: string } }>(registerRes);
   const userId = user.id;

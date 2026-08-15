@@ -61,7 +61,7 @@ async function createIdentity(label: string): Promise<Identity> {
   const registerRes = await fetch(`${BASE_URL}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, name: `Tenant ${label}` }),
+    body: JSON.stringify({ email, password, name: `Tenant ${label}`, acceptedLegal: true }),
   });
   if (registerRes.status !== 201) throw new Error(`register failed for ${label}: ${registerRes.status}`);
   const { user } = await json<{ user: { id: string } }>(registerRes);
