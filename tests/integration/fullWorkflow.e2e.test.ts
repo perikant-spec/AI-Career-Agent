@@ -276,4 +276,71 @@ describe.runIf(await serverReachable())("Full acceptance workflow (signup -> tra
     },
     STEP_TIMEOUT
   );
+
+  it(
+    "11. a second, unrelated user cannot access any resource this workflow just created",
+    async () => {
+      // Deliberately lightweight and scoped to exactly this run's own resources — the
+      // exhaustive, general-purpose IDOR sweep across every resource type/route lives in
+      // tests/integration/tenantIsolation.test.ts. This closes the loop within the acceptance
+      // test's own narrative: the same job/application/contact/resume/profile a real signup just
+      // built are the ones proven inaccessible to somebody else, not a separately-constructed
+      // fixture.
+      const { prisma } = await import("@/lib/prisma");
+      const attackerEmail = `e2e-postgres-attacker-${Date.now()}@example.com`;
+      const attackerPassword = "e2eAttackerPass123";
+
+      const registerRes = await fetch(`${BASE_URL}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: attackerEmail, password: attackerPassword, acceptedLegal: true }),
+      });
+      const { user: attacker } = await json<{ user: { id: string } }>(registerRes);
+      const attackerCookie = await createWebSession(BASE_URL, attackerEmail, attackerPassword);
+      const attackerLoginRes = await fetch(`${BASE_URL}/api/mobile/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: attackerEmail, password: attackerPassword }),
+      });
+      const { token: attackerToken } = await json<{ token: string }>(attackerLoginRes);
+
+      function attackerWeb(path: string) {
+        return fetch(`${BASE_URL}${path}`, { headers: { Cookie: attackerCookie } });
+      }
+      function attackerMobile(path: string) {
+        return fetch(`${BASE_URL}${path}`, { headers: { Authorization: `Bearer ${attackerToken}` } });
+      }
+
+      const [jobRes, applicationRes, resumeVersionRes, profileRes, contactsRes, exportRes] = await Promise.all([
+        attackerMobile(`/api/jobs/${jobId}`),
+        attackerMobile(`/api/applications/${applicationId}`),
+        attackerWeb(`/api/jobs/${jobId}/resume-version`),
+        attackerWeb("/api/profile"),
+        attackerWeb(`/api/jobs/${jobId}/contacts`),
+        attackerWeb("/api/account/export"),
+      ]);
+
+      expect(jobRes.status).toBe(404);
+      expect(applicationRes.status).toBe(404);
+      expect(resumeVersionRes.status).toBe(404);
+      // Scoped by {jobId, userId} before it ever looks at contacts — an attacker who doesn't own
+      // the job gets the same "not found" a nonexistent jobId would produce.
+      expect(contactsRes.status).toBe(404);
+
+      // /api/profile and /api/account/export are always-200 "whatever this caller owns" — the
+      // isolation proof is that they reflect the attacker's own (empty) data, never this
+      // workflow's.
+      expect(profileRes.status).toBe(200);
+      const profileBody = await json<{ totalEntries: number }>(profileRes);
+      expect(profileBody.totalEntries).toBe(0);
+
+      expect(exportRes.status).toBe(200);
+      const exportBody = await json<{ jobs: unknown[]; contacts: unknown[] }>(exportRes);
+      expect(exportBody.jobs).toHaveLength(0);
+      expect(exportBody.contacts).toHaveLength(0);
+
+      await prisma.user.delete({ where: { id: attacker.id } }).catch(() => {});
+    },
+    STEP_TIMEOUT
+  );
 });
