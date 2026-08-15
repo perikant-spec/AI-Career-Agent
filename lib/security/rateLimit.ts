@@ -27,7 +27,17 @@ export interface RateLimitResult {
   retryAfterSeconds?: number;
 }
 
+// Test/local-dev escape hatch only — lets integration tests register many accounts in a tight
+// loop without tripping the same limits a real attacker would hit. Double-gated on NODE_ENV so a
+// misconfigured production environment variable can't silently disable rate limiting: even if
+// RATE_LIMIT_DISABLED is accidentally set to "true" in production, this stays a no-op there.
+function isRateLimitDisabledForTests(): boolean {
+  return process.env.RATE_LIMIT_DISABLED === "true" && process.env.NODE_ENV !== "production";
+}
+
 export function checkRateLimit(key: string, windowMs: number, max: number): RateLimitResult {
+  if (isRateLimitDisabledForTests()) return { allowed: true };
+
   const now = Date.now();
   sweepExpired(now);
 
