@@ -6,6 +6,7 @@ import { ensureApplicationPackage } from "@/lib/application/generateApplicationP
 import { assertProFeature } from "@/lib/billing/entitlements";
 import { checkUserAndGlobalRateLimit, rateLimitResponse } from "@/lib/security/rateLimit";
 import { RATE_LIMITS } from "@/lib/security/rateLimits.config";
+import { checkAIBudget } from "@/lib/ai/usageLimits";
 
 function serialize(app: {
   id: string;
@@ -106,6 +107,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     const rate = checkUserAndGlobalRateLimit({ scope: "applicationGeneration", userId, ...RATE_LIMITS.applicationGeneration });
     if (!rate.allowed) return rateLimitResponse(rate.retryAfterSeconds!);
+
+    const budget = await checkAIBudget(userId);
+    if (!budget.allowed) {
+      return NextResponse.json({ error: budget.reason }, { status: 429 });
+    }
 
     const piece = parsed.data.regenerate;
     await ensureApplicationPackage(userId, existing.jobId, {

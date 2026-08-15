@@ -7,6 +7,9 @@ import { extractResumeText } from "@/lib/resumeText/extract";
 import { extractAndValidateResumeEntries } from "@/lib/profile/buildProfileEntries";
 import { checkUserAndGlobalRateLimit, rateLimitResponse } from "@/lib/security/rateLimit";
 import { RATE_LIMITS } from "@/lib/security/rateLimits.config";
+import { checkAIBudget } from "@/lib/ai/usageLimits";
+import { withUsageTracking, summarizeUsage } from "@/lib/ai/usageTracking";
+import { estimateCostUsd } from "@/lib/ai/pricing";
 
 export async function GET() {
   const session = await auth();
@@ -92,10 +95,18 @@ export async function POST(request: Request) {
     });
   }
 
+  const budget = await checkAIBudget(userId);
+  if (!budget.allowed) {
+    return NextResponse.json({ error: budget.reason }, { status: 429 });
+  }
+
   let aiStatus: "SUCCESS" | "ERROR" = "SUCCESS";
   let result;
+  let usage;
   try {
-    result = await extractAndValidateResumeEntries(extraction.text, resumeDocument.id);
+    const tracked = await withUsageTracking(() => extractAndValidateResumeEntries(extraction.text, resumeDocument.id));
+    result = tracked.result;
+    usage = summarizeUsage(tracked.usage);
   } catch (err) {
     aiStatus = "ERROR";
     await prisma.aIInteraction.create({
@@ -145,6 +156,9 @@ export async function POST(request: Request) {
         inputRef: resumeDocument.id,
         outputRef: `${result.entries.length} entries`,
         status: aiStatus,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        estimatedCostUsd: estimateCostUsd(usage.model, usage.inputTokens, usage.outputTokens),
       },
     }),
   ]);

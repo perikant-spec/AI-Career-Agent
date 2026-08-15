@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getAIProvider } from "@/lib/ai";
+import { withUsageTracking, summarizeUsage } from "@/lib/ai/usageTracking";
+import { estimateCostUsd } from "@/lib/ai/pricing";
 
 export interface MockAttemptScores {
   id: string;
@@ -26,9 +28,14 @@ export async function scoreMockAttempt(
   const provider = getAIProvider();
   let status: "SUCCESS" | "ERROR" = "SUCCESS";
   let scores: Omit<MockAttemptScores, "id" | "responseText">;
+  let usage = summarizeUsage([]);
 
   try {
-    scores = await provider.scoreMockInterviewResponse({ question: question.question, responseText });
+    const tracked = await withUsageTracking(() =>
+      provider.scoreMockInterviewResponse({ question: question.question, responseText })
+    );
+    usage = summarizeUsage(tracked.usage);
+    scores = tracked.result;
   } catch {
     status = "ERROR";
     scores = {
@@ -49,6 +56,9 @@ export async function scoreMockAttempt(
       inputRef: interviewQuestionId,
       outputRef: `relevance=${scores.scoreRelevance}`,
       status,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      estimatedCostUsd: estimateCostUsd(usage.model, usage.inputTokens, usage.outputTokens),
     },
   });
 

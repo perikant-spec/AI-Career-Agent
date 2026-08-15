@@ -7,6 +7,7 @@ import { ensureOutreachMessage } from "@/lib/networking/generateOutreachMessage"
 import { assertProFeature } from "@/lib/billing/entitlements";
 import { checkUserAndGlobalRateLimit, rateLimitResponse } from "@/lib/security/rateLimit";
 import { RATE_LIMITS } from "@/lib/security/rateLimits.config";
+import { checkAIBudget } from "@/lib/ai/usageLimits";
 
 const generateSchema = z.object({
   messageType: z.enum(OUTREACH_MESSAGE_TYPES),
@@ -34,6 +35,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const rate = checkUserAndGlobalRateLimit({ scope: "networkingGeneration", userId, ...RATE_LIMITS.networkingGeneration });
   if (!rate.allowed) return rateLimitResponse(rate.retryAfterSeconds!);
+
+  const budget = await checkAIBudget(userId);
+  if (!budget.allowed) {
+    return NextResponse.json({ error: budget.reason }, { status: 429 });
+  }
 
   const message = await ensureOutreachMessage(userId, id, parsed.data.messageType, parsed.data.force ?? false);
   return NextResponse.json({ message });

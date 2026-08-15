@@ -15,7 +15,10 @@ export const RATE_LIMITS = {
   jobImportAdzuna: { userMax: 10, userWindowMs: HOUR, globalMax: 200, globalWindowMs: HOUR },
   assistantChat: { userMax: 60, userWindowMs: HOUR, globalMax: 2000, globalWindowMs: HOUR },
   applicationGeneration: { userMax: 20, userWindowMs: HOUR, globalMax: 500, globalWindowMs: HOUR },
+  resumeCustomization: { userMax: 20, userWindowMs: HOUR, globalMax: 500, globalWindowMs: HOUR },
+  jobRescore: { userMax: 30, userWindowMs: HOUR, globalMax: 800, globalWindowMs: HOUR },
   networkingGeneration: { userMax: 30, userWindowMs: HOUR, globalMax: 500, globalWindowMs: HOUR },
+  followUpGeneration: { userMax: 30, userWindowMs: HOUR, globalMax: 500, globalWindowMs: HOUR },
   mockInterviewScoring: { userMax: 40, userWindowMs: HOUR, globalMax: 800, globalWindowMs: HOUR },
 } as const;
 

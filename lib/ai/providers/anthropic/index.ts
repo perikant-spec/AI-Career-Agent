@@ -21,6 +21,7 @@ import type {
 } from "@/lib/ai/types";
 import { CONFIDENCE_LEVELS, PROFILE_SECTIONS } from "@/lib/types/enums";
 import { findExactSpan } from "@/lib/text/spanMatch";
+import { recordUsage } from "@/lib/ai/usageTracking";
 
 // Configurable so a cost/quality tradeoff can be made later without touching call sites.
 const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
@@ -277,6 +278,7 @@ class AnthropicProvider implements AIProvider {
       tool_choice: { type: "tool", name: RESUME_EXTRACTION_TOOL.name },
       messages: [{ role: "user", content: `Extract the career profile from this resume:\n\n${rawText}` }],
     });
+    recordUsage({ inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, model: MODEL });
 
     const raw = toolInput<{
       entries: Array<Omit<ExtractedProfileEntry, "sourceSpan"> & { quote?: string }>;
@@ -302,6 +304,7 @@ class AnthropicProvider implements AIProvider {
       tool_choice: { type: "tool", name: JOB_EXTRACTION_TOOL.name },
       messages: [{ role: "user", content: `Extract the requirements from this job posting:\n\n${rawText}` }],
     });
+    recordUsage({ inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, model: MODEL });
 
     const raw = toolInput<{
       title?: string;
@@ -359,6 +362,7 @@ class AnthropicProvider implements AIProvider {
         },
       ],
     });
+    recordUsage({ inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, model: MODEL });
 
     const raw = toolInput<{ text: string; strengths?: string[]; gaps?: string[]; citedEntityIds: string[] }>(
       response,
@@ -385,6 +389,7 @@ class AnthropicProvider implements AIProvider {
         { role: "user", content: `intent: ${intent}\n\ntoolResults: ${JSON.stringify(toolResults)}` },
       ],
     });
+    recordUsage({ inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, model: MODEL });
 
     const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
     return textBlock?.text ?? "I couldn't generate a response for that.";
@@ -405,6 +410,7 @@ class AnthropicProvider implements AIProvider {
         },
       ],
     });
+    recordUsage({ inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, model: MODEL });
 
     const raw = toolInput<{ tailoredSummary: string; citedEntityIds: string[] }>(
       response,
@@ -429,6 +435,7 @@ class AnthropicProvider implements AIProvider {
         },
       ],
     });
+    recordUsage({ inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, model: MODEL });
 
     const raw = toolInput<{ content: string; citedEntityIds: string[] }>(response, COVER_LETTER_TOOL.name);
     return { content: raw.content, citedEntityIds: raw.citedEntityIds };
@@ -449,6 +456,7 @@ class AnthropicProvider implements AIProvider {
         },
       ],
     });
+    recordUsage({ inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, model: MODEL });
 
     const raw = toolInput<{ answers: Array<{ question: string; answer: string }>; citedEntityIds: string[] }>(
       response,
@@ -475,6 +483,7 @@ class AnthropicProvider implements AIProvider {
         },
       ],
     });
+    recordUsage({ inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, model: MODEL });
 
     const raw = toolInput<{ content: string; citedEntityIds: string[] }>(response, OUTREACH_MESSAGE_TOOL.name);
     return { content: raw.content, citedEntityIds: raw.citedEntityIds };
@@ -495,6 +504,7 @@ class AnthropicProvider implements AIProvider {
         },
       ],
     });
+    recordUsage({ inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, model: MODEL });
 
     const raw = toolInput<{ content: string; citedEntityIds: string[] }>(response, FOLLOW_UP_MESSAGE_TOOL.name);
     return { content: raw.content, citedEntityIds: raw.citedEntityIds };
@@ -515,6 +525,7 @@ class AnthropicProvider implements AIProvider {
         },
       ],
     });
+    recordUsage({ inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, model: MODEL });
 
     const raw = toolInput<MockInterviewScoreResult>(response, MOCK_INTERVIEW_SCORE_TOOL.name);
     return raw;

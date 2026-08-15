@@ -5,6 +5,8 @@ import type { ConfidenceLevel } from "@/lib/types/enums";
 import type { JobRequirements } from "@/lib/ai/types";
 import { buildDeterministicCustomization, type ChangeLogEntry, type TailoredExperienceEntry, type TailoredSkill } from "./customize";
 import { computeAtsScore } from "./atsScore";
+import { withUsageTracking, summarizeUsage } from "@/lib/ai/usageTracking";
+import { estimateCostUsd } from "@/lib/ai/pricing";
 
 const USABLE_CONFIDENCE = new Set<ConfidenceLevel>(["VERIFIED", "SUPPORTED_INFERENCE"]);
 
@@ -52,6 +54,7 @@ export async function generateResumeVersion(userId: string, jobId: string): Prom
   const provider = getAIProvider();
   let tailoredSummary = originalSummary;
   let aiStatus: "SUCCESS" | "ERROR" | "SKIPPED" = "SKIPPED";
+  let usage = summarizeUsage([]);
 
   if (deterministic.topRelevantBullet) {
     const sourceEntry = profileEntries.find((e) => e.id === deterministic.topRelevantBullet!.entryId);
@@ -61,12 +64,16 @@ export async function generateResumeVersion(userId: string, jobId: string): Prom
     const allowedIds = new Set(citedEntities.map((e) => e.id));
 
     try {
-      const result = await provider.generateResumeCustomization({
-        masterSummary: originalSummary || undefined,
-        citedEntities,
-        topRelevantPhrase: deterministic.topRelevantBullet.text,
-        jobTitle: job.title ?? undefined,
-      });
+      const tracked = await withUsageTracking(() =>
+        provider.generateResumeCustomization({
+          masterSummary: originalSummary || undefined,
+          citedEntities,
+          topRelevantPhrase: deterministic.topRelevantBullet!.text,
+          jobTitle: job.title ?? undefined,
+        })
+      );
+      usage = summarizeUsage(tracked.usage);
+      const result = tracked.result;
 
       const { valid } = validateCitations(result.citedEntityIds, allowedIds);
       if (valid && result.tailoredSummary.trim()) {
@@ -115,6 +122,9 @@ export async function generateResumeVersion(userId: string, jobId: string): Prom
       inputRef: jobId,
       outputRef: `ats=${atsScoreBefore}->${atsScoreAfter}`,
       status: aiStatus === "ERROR" ? "ERROR" : "SUCCESS",
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      estimatedCostUsd: estimateCostUsd(usage.model, usage.inputTokens, usage.outputTokens),
     },
   });
 

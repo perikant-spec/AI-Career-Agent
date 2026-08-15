@@ -4,6 +4,8 @@ import { validateCitations } from "@/lib/evidence/validator";
 import type { JobRequirements } from "@/lib/ai/types";
 import type { OutreachMessageType } from "@/lib/types/enums";
 import { buildApplicationFacts } from "@/lib/application/facts";
+import { withUsageTracking, summarizeUsage } from "@/lib/ai/usageTracking";
+import { estimateCostUsd } from "@/lib/ai/pricing";
 
 const FALLBACK_CONTENT =
   "I couldn't generate a grounded draft here from your verified profile — worth writing this one yourself.";
@@ -62,15 +64,20 @@ export async function ensureOutreachMessage(
   let content: string;
   let citedEntityIds: string[];
   let status: "SUCCESS" | "ERROR" = "SUCCESS";
+  let usage = summarizeUsage([]);
 
   try {
-    const result = await provider.generateOutreachMessage({
-      ...facts,
-      contactName: contact.name,
-      contactRole: contact.role ?? undefined,
-      messageType,
-      relationshipNote: contact.relationshipNote ?? undefined,
-    });
+    const tracked = await withUsageTracking(() =>
+      provider.generateOutreachMessage({
+        ...facts,
+        contactName: contact.name,
+        contactRole: contact.role ?? undefined,
+        messageType,
+        relationshipNote: contact.relationshipNote ?? undefined,
+      })
+    );
+    usage = summarizeUsage(tracked.usage);
+    const result = tracked.result;
     const { valid } = validateCitations(result.citedEntityIds, allowedIds);
     if (valid && result.content.trim()) {
       content = result.content.trim();
@@ -95,6 +102,9 @@ export async function ensureOutreachMessage(
       inputRef: `${contactId}:${messageType}`,
       outputRef: content.slice(0, 200),
       status,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      estimatedCostUsd: estimateCostUsd(usage.model, usage.inputTokens, usage.outputTokens),
     },
   });
 
