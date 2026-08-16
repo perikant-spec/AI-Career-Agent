@@ -1,0 +1,76 @@
+# Local, Docker-based rehearsal of the production topology — app image + a real Postgres +
+# (optionally) a real S3-compatible endpoint — so the Dockerfile and a full container boot can be
+# proven out on a machine with Docker before ever touching real staging/production
+# infrastructure. Not itself a deployment target: staging/production point at managed services
+# (see .env.staging.example / .env.production.example / docs/DEPLOYMENT.md), not these containers.
+#
+# Usage:
+#   docker compose up --build                 # app + postgres (S3 falls back to local disk)
+#   docker compose --profile local-s3 up --build   # + a local S3-compatible endpoint (minio)
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ai_career_agent
+    ports:
+      - "5433:5432" # 5433 host-side to avoid colliding with a local Postgres already on 5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/ai_career_agent?schema=public"
+    # The image's own node_modules/.bin/prisma — no separate install needed. Runs once and exits;
+    # `app` waits for this to succeed before starting (see depends_on below), same "migrate as a
+    # release step, not on every container boot" pattern documented in docs/DEPLOYMENT.md.
+    entrypoint: ["node_modules/.bin/prisma", "migrate", "deploy"]
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    environment:
+      APP_ENV: "development" # this is a local rehearsal, not a real deployment — see Dockerfile
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/ai_career_agent?schema=public"
+      AUTH_SECRET: "local-compose-secret-do-not-use-in-real-deploys"
+      AUTH_URL: "http://localhost:3000"
+      # Uncomment once running with --profile local-s3 (minio, below):
+      # S3_BUCKET: "resumes"
+      # S3_REGION: "us-east-1"
+      # S3_ACCESS_KEY_ID: "minioadmin"
+      # S3_SECRET_ACCESS_KEY: "minioadmin"
+      # S3_ENDPOINT: "http://minio:9000"
+
+  minio:
+    image: minio/minio
+    profiles: ["local-s3"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # web console
+    volumes:
+      - minio_data:/data
+
+volumes:
+  postgres_data:
+  minio_data:

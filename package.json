@@ -14,7 +14,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:start": "node scripts/postgres-local.mjs start",
     "db:stop": "node scripts/postgres-local.mjs stop",
-    "db:backup": "node scripts/backup-db.mjs"
+    "db:backup": "node scripts/backup-db.mjs",
+    "smoke-test": "node scripts/smoke-test.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
