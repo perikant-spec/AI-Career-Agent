@@ -23,6 +23,13 @@ const SECURITY_HEADERS: { key: string; value: string }[] = [
 ];
 
 const nextConfig: NextConfig = {
+  // Produces a self-contained .next/standalone build (traced node_modules + a server.js
+  // entrypoint) instead of requiring the full node_modules tree at runtime — this is what makes
+  // the Dockerfile's runtime image small and is safe to leave on regardless of host: Vercel
+  // ignores it and manages its own optimized output, everything else (Railway/Render/Fly/a VPS)
+  // benefits from it.
+  output: "standalone",
+
   // pdf-parse/mammoth are only ever imported from server-only route handlers, but Next's
   // bundler will still try to trace/bundle them for the server runtime unless told not to —
   // this keeps them as plain Node `require`s instead.
