@@ -1,10 +1,16 @@
-// Enum-like fields are modeled as String (not Prisma `enum`) — SQLite/Postgres enum support
-// diverges, and the single source of truth is the TS unions in lib/types/enums.ts. This keeps
-// "swap SQLite for Postgres later" a one-line datasource change, not a migration rewrite.
+// Enum-like fields are modeled as String (not Prisma `enum`) — the single source of truth is
+// the TS unions in lib/types/enums.ts, checked at the application layer via zod/TS, not by the
+// database. (This project ran on SQLite through initial development; it is Postgres from here
+// on — see DATABASE_URL.)
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+  // Prisma's own connection pool, sized via the DATABASE_URL query string (see .env.example) —
+  // e.g. ?connection_limit=10&pool_timeout=20. A high-concurrency serverless deployment should
+  // sit this behind PgBouncer or Prisma Accelerate instead of relying on this pool alone, since
+  // many short-lived function instances each holding their own pool can still exhaust Postgres's
+  // own max_connections.
 }
 
 generator client {
@@ -23,6 +29,15 @@ model User {
   // passwordHash. Single-use: cleared the moment a reset succeeds.
   passwordResetTokenHash      String?
   passwordResetTokenExpiresAt DateTime?
+
+  // Captured at registration (see lib/legal/documents.ts) — version is the LEGAL_DOCUMENTS
+  // slug's version string at the moment of acceptance, not the current one, so a later legal-doc
+  // update can be detected by comparing against LEGAL_DOCUMENTS's current version and trigger
+  // re-consent rather than silently assuming an old acceptance still covers new terms.
+  termsAcceptedAt   DateTime?
+  termsVersion      String?
+  privacyAcceptedAt DateTime?
+  privacyVersion    String?
 
   resumes               ResumeDocument[]
   profileEntries        CareerProfileEntry[]
@@ -81,10 +96,11 @@ model CareerProfileEntry {
   userConfirmed Boolean @default(false)
   userEdited    Boolean @default(false)
 
-  createdAt DateTime @updatedAt
-  updatedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId, section])
+  @@index([sourceDocumentId])
 }
 
 model Job {
@@ -134,6 +150,7 @@ model MatchScore {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, jobId])
+  @@index([jobId])
 }
 
 model ResumeVersion {
@@ -156,6 +173,7 @@ model ResumeVersion {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, jobId])
+  @@index([jobId])
 }
 
 model Application {
@@ -190,6 +208,7 @@ model Application {
 
   @@unique([userId, jobId])
   @@index([userId, status])
+  @@index([jobId])
 }
 
 model FollowUp {
@@ -211,6 +230,7 @@ model FollowUp {
   updatedAt DateTime @updatedAt
 
   @@index([userId, status, dueDate])
+  @@index([applicationId])
 }
 
 model InterviewPrep {
@@ -229,6 +249,8 @@ model InterviewPrep {
   updatedAt DateTime @updatedAt
 
   questions InterviewQuestion[]
+
+  @@index([userId])
 }
 
 model InterviewQuestion {
@@ -282,6 +304,7 @@ model MockInterviewAttempt {
   createdAt DateTime @default(now())
 
   @@index([userId, interviewQuestionId])
+  @@index([interviewQuestionId])
 }
 
 model Contact {
@@ -318,6 +341,7 @@ model Contact {
   messages OutreachMessage[]
 
   @@index([userId, jobId])
+  @@index([jobId])
 }
 
 model OutreachMessage {
@@ -360,6 +384,13 @@ model UserPreferences {
   // timers" — this is a fixed offset computed once at Applied time, not a smart/adaptive one.
   followUpDays Int @default(7)
 
+  // Opt-in, defaults to false — matches the registration page's promise that nothing is used to
+  // train models unless explicitly turned on here. No training pipeline exists in this codebase
+  // today (the Anthropic API this app calls does not train on API traffic regardless), so this
+  // flag currently has no consuming system; it exists so one can be built later already gated
+  // correctly, rather than retrofitting consent after the fact.
+  aiTrainingOptIn Boolean @default(false)
+
   updatedAt DateTime @updatedAt
 }
 
@@ -370,11 +401,19 @@ model AIInteraction {
 
   toolName        String // "resume.extract" | "job.extract" | "match.score" | "assistant.<intent>"
   provider        String // "mock" | "anthropic"
-  providerVersion String?
+  providerVersion String? // the model name for real AI calls, e.g. "claude-sonnet-5" — null for the mock provider, which makes no real model call
   inputRef        String // id/hash reference, not full payload
   outputRef       String
   status          String // SUCCESS | ERROR
   errorMessage    String?
+
+  // Token/cost tracking (AI cost control) — all null for mock-provider rows, since there is no
+  // real API call or cost to record. Populated from the Anthropic SDK's own response.usage via
+  // lib/ai/usageTracking.ts; estimatedCostUsd is a directional estimate (lib/ai/pricing.ts), not
+  // an exact invoice line.
+  inputTokens      Int?
+  outputTokens     Int?
+  estimatedCostUsd Float?
 
   createdAt DateTime @default(now())
 

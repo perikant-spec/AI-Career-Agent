@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { registerSchema } from "@/lib/validation/auth";
 import { signMobileToken } from "@/lib/mobile/auth";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/security/rateLimit";
+import { LEGAL_DOCUMENTS } from "@/lib/legal/documents";
 
 export async function POST(request: Request) {
   const rate = checkRateLimit(`mobile-register:${getClientIp(request)}`, 60 * 60 * 1000, 5);
@@ -23,8 +24,17 @@ export async function POST(request: Request) {
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
+  const now = new Date();
   const user = await prisma.user.create({
-    data: { email, passwordHash, name },
+    data: {
+      email,
+      passwordHash,
+      name,
+      termsAcceptedAt: now,
+      termsVersion: LEGAL_DOCUMENTS.terms.version,
+      privacyAcceptedAt: now,
+      privacyVersion: LEGAL_DOCUMENTS.privacy.version,
+    },
     select: { id: true, email: true, name: true },
   });
 

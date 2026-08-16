@@ -5,6 +5,9 @@ import type { JobRequirements, ApplicationAnswerItem } from "@/lib/ai/types";
 import { buildApplicationFacts } from "./facts";
 import { DEFAULT_APPLICATION_QUESTIONS } from "./questions";
 import { generateResumeVersion } from "@/lib/resume/generateResumeVersion";
+import { withUsageTracking, summarizeUsage } from "@/lib/ai/usageTracking";
+import { estimateCostUsd } from "@/lib/ai/pricing";
+import { validateGeneratedClaims, allowedSourceTextFromFacts } from "@/lib/evidence/claimValidator";
 
 const FALLBACK_ANSWER =
   "I couldn't generate a grounded answer here from your verified profile — worth writing this one yourself.";
@@ -56,6 +59,7 @@ export async function ensureApplicationPackage(
       : { requiredSkills: [], niceToHaveSkills: [], requiredCertifications: [] };
     const facts = buildApplicationFacts(profileEntries, jobRequirements, job.title, job.company);
     const allowedIds = new Set(facts.citedEntities.map((e) => e.id));
+    const allowedSourceText = allowedSourceTextFromFacts(facts);
     const provider = getAIProvider();
 
     const updateData: { coverLetterContent?: string; qaAnswers?: string } = {};
@@ -63,13 +67,19 @@ export async function ensureApplicationPackage(
     if (needsCoverLetter) {
       let status: "SUCCESS" | "ERROR" = "SUCCESS";
       let coverLetter: CoverLetterContent;
+      let coverLetterUsage = summarizeUsage([]);
       try {
-        const result = await provider.generateCoverLetter(facts);
+        const tracked = await withUsageTracking(() => provider.generateCoverLetter(facts));
+        coverLetterUsage = summarizeUsage(tracked.usage);
+        const result = tracked.result;
         const { valid } = validateCitations(result.citedEntityIds, allowedIds);
-        coverLetter = valid
+        // Citation validity alone doesn't rule out a fabricated number/skill riding along in an
+        // otherwise-grounded sentence — the claim check re-verifies the generated text itself.
+        const claimCheck = valid ? validateGeneratedClaims(result.content, allowedSourceText) : { valid: false, unsupportedNumbers: [], unsupportedSkills: [] };
+        coverLetter = valid && claimCheck.valid
           ? { content: result.content, citedEntityIds: result.citedEntityIds }
           : { content: FALLBACK_ANSWER, citedEntityIds: [] };
-        if (!valid) status = "ERROR";
+        if (!valid || !claimCheck.valid) status = "ERROR";
       } catch {
         status = "ERROR";
         coverLetter = { content: FALLBACK_ANSWER, citedEntityIds: [] };
@@ -84,6 +94,9 @@ export async function ensureApplicationPackage(
           inputRef: jobId,
           outputRef: coverLetter.content.slice(0, 200),
           status,
+          inputTokens: coverLetterUsage.inputTokens,
+          outputTokens: coverLetterUsage.outputTokens,
+          estimatedCostUsd: estimateCostUsd(coverLetterUsage.model, coverLetterUsage.inputTokens, coverLetterUsage.outputTokens),
         },
       });
     }
@@ -91,15 +104,18 @@ export async function ensureApplicationPackage(
     if (needsQa) {
       let status: "SUCCESS" | "ERROR" = "SUCCESS";
       let answers: ApplicationAnswerItem[];
+      let qaUsage = summarizeUsage([]);
       try {
-        const result = await provider.generateApplicationAnswers({
-          ...facts,
-          questions: [...DEFAULT_APPLICATION_QUESTIONS],
-        });
+        const tracked = await withUsageTracking(() =>
+          provider.generateApplicationAnswers({ ...facts, questions: [...DEFAULT_APPLICATION_QUESTIONS] })
+        );
+        qaUsage = summarizeUsage(tracked.usage);
+        const result = tracked.result;
         answers = result.answers.map((a) => {
           const { valid } = validateCitations(a.citedEntityIds, allowedIds);
-          if (!valid) status = "ERROR";
-          return valid ? a : { question: a.question, answer: FALLBACK_ANSWER, citedEntityIds: [] };
+          const claimCheck = valid ? validateGeneratedClaims(a.answer, allowedSourceText) : { valid: false, unsupportedNumbers: [], unsupportedSkills: [] };
+          if (!valid || !claimCheck.valid) status = "ERROR";
+          return valid && claimCheck.valid ? a : { question: a.question, answer: FALLBACK_ANSWER, citedEntityIds: [] };
         });
         if (answers.length !== DEFAULT_APPLICATION_QUESTIONS.length) {
           status = "ERROR";
@@ -122,6 +138,9 @@ export async function ensureApplicationPackage(
           inputRef: jobId,
           outputRef: `answers=${answers.length}`,
           status,
+          inputTokens: qaUsage.inputTokens,
+          outputTokens: qaUsage.outputTokens,
+          estimatedCostUsd: estimateCostUsd(qaUsage.model, qaUsage.inputTokens, qaUsage.outputTokens),
         },
       });
     }

@@ -1,3 +1,5 @@
+import type { NavigatorScreenParams } from "@react-navigation/native";
+
 export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
@@ -25,9 +27,9 @@ export type InterviewsStackParamList = {
 
 export type MainTabParamList = {
   Home: undefined;
-  JobsTab: undefined;
-  ApplicationsTab: undefined;
-  NetworkingTab: undefined;
-  InterviewsTab: undefined;
+  JobsTab: NavigatorScreenParams<JobsStackParamList>;
+  ApplicationsTab: NavigatorScreenParams<ApplicationsStackParamList>;
+  NetworkingTab: NavigatorScreenParams<NetworkingStackParamList>;
+  InterviewsTab: NavigatorScreenParams<InterviewsStackParamList>;
   Settings: undefined;
 };

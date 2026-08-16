@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { resolveUserId } from "@/lib/auth/resolveUserId";
 import { ensureApplicationPackage } from "@/lib/application/generateApplicationPackage";
 import { assertProFeature } from "@/lib/billing/entitlements";
+import { checkUserAndGlobalRateLimit, rateLimitResponse } from "@/lib/security/rateLimit";
+import { RATE_LIMITS } from "@/lib/security/rateLimits.config";
+import { checkAIBudget } from "@/lib/ai/usageLimits";
 
 /** Idempotent "prepare application" — generates whatever's missing, redirects the UI to the
  *  application id it created/found. */
@@ -17,6 +20,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const gate = await assertProFeature(userId, "APPLICATION_PACKAGE");
   if (!gate.allowed) {
     return NextResponse.json({ error: gate.reason, upgradeRequired: true }, { status: 402 });
+  }
+
+  const rate = checkUserAndGlobalRateLimit({ scope: "applicationGeneration", userId, ...RATE_LIMITS.applicationGeneration });
+  if (!rate.allowed) return rateLimitResponse(rate.retryAfterSeconds!);
+
+  const budget = await checkAIBudget(userId);
+  if (!budget.allowed) {
+    return NextResponse.json({ error: budget.reason }, { status: 429 });
   }
 
   const application = await ensureApplicationPackage(userId, id);

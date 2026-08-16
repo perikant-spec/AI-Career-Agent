@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { storage } from "@/lib/storage/localDisk";
+import { getStorageProvider } from "@/lib/storage";
+import { MAX_RESUME_FILE_SIZE_BYTES, isAllowedResumeFile } from "@/lib/storage/types";
 import { extractResumeText } from "@/lib/resumeText/extract";
 import { extractAndValidateResumeEntries } from "@/lib/profile/buildProfileEntries";
-
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+import { checkUserAndGlobalRateLimit, rateLimitResponse } from "@/lib/security/rateLimit";
+import { RATE_LIMITS } from "@/lib/security/rateLimits.config";
+import { checkAIBudget } from "@/lib/ai/usageLimits";
+import { withUsageTracking, summarizeUsage } from "@/lib/ai/usageTracking";
+import { estimateCostUsd } from "@/lib/ai/pricing";
 
 export async function GET() {
   const session = await auth();
@@ -34,21 +38,31 @@ export async function POST(request: Request) {
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const userId = session.user.id;
 
+  const rate = checkUserAndGlobalRateLimit({ scope: "resumeUpload", userId, ...RATE_LIMITS.resumeUpload });
+  if (!rate.allowed) return rateLimitResponse(rate.retryAfterSeconds!);
+
   const formData = await request.formData().catch(() => null);
   const file = formData?.get("file");
 
   if (!file || !(file instanceof File)) {
     return NextResponse.json({ error: "No file was uploaded." }, { status: 400 });
   }
-  if (file.size > MAX_FILE_SIZE_BYTES) {
+  if (file.size > MAX_RESUME_FILE_SIZE_BYTES) {
     return NextResponse.json({ error: "File is too large (10MB max)." }, { status: 400 });
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
   const mimeType = file.type || "application/octet-stream";
+  if (!isAllowedResumeFile(mimeType, file.name)) {
+    return NextResponse.json(
+      { error: "Only PDF and DOCX files are supported. Try exporting to one of those, or paste your resume text directly." },
+      { status: 400 }
+    );
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
 
   const extraction = await extractResumeText(buffer, mimeType, file.name);
-  const storageKey = await storage.put({ userId, fileName: file.name, data: buffer });
+  const storageKey = await getStorageProvider().put({ userId, fileName: file.name, mimeType, data: buffer });
 
   const existingCount = await prisma.resumeDocument.count({ where: { userId } });
   const isMaster = existingCount === 0;
@@ -81,10 +95,18 @@ export async function POST(request: Request) {
     });
   }
 
+  const budget = await checkAIBudget(userId);
+  if (!budget.allowed) {
+    return NextResponse.json({ error: budget.reason }, { status: 429 });
+  }
+
   let aiStatus: "SUCCESS" | "ERROR" = "SUCCESS";
   let result;
+  let usage;
   try {
-    result = await extractAndValidateResumeEntries(extraction.text, resumeDocument.id);
+    const tracked = await withUsageTracking(() => extractAndValidateResumeEntries(extraction.text, resumeDocument.id));
+    result = tracked.result;
+    usage = summarizeUsage(tracked.usage);
   } catch (err) {
     aiStatus = "ERROR";
     await prisma.aIInteraction.create({
@@ -134,6 +156,9 @@ export async function POST(request: Request) {
         inputRef: resumeDocument.id,
         outputRef: `${result.entries.length} entries`,
         status: aiStatus,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        estimatedCostUsd: estimateCostUsd(usage.model, usage.inputTokens, usage.outputTokens),
       },
     }),
   ]);

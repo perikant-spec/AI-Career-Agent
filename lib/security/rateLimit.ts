@@ -1,3 +1,5 @@
+import { getAppEnv } from "@/lib/env";
+
 // In-memory fixed-window rate limiter — deliberately the simplest thing that actually works for
 // a single-instance deployment, same "MVP timer, not a distributed system" pattern used
 // elsewhere (Follow-Up Engine, mobile JWT TTL). A multi-instance production deployment would
@@ -27,7 +29,22 @@ export interface RateLimitResult {
   retryAfterSeconds?: number;
 }
 
+// Test/local-dev/CI escape hatch only — lets integration tests register many accounts in a
+// tight loop without tripping the same limits a real attacker would hit. Double-gated on
+// getAppEnv() (lib/env.ts), not NODE_ENV, so a misconfigured production environment variable
+// can't silently disable rate limiting: even if RATE_LIMIT_DISABLED is accidentally set to
+// "true" in production, this stays a no-op there. NODE_ENV alone can't make this distinction —
+// `next start` always sets NODE_ENV=production even for a CI job testing that production build
+// against local infrastructure (see .github/workflows/ci.yml's integration-tests job, which sets
+// APP_ENV=development precisely so this escape hatch still works there); APP_ENV is the actual
+// "is this a real production deployment" signal.
+function isRateLimitDisabledForTests(): boolean {
+  return process.env.RATE_LIMIT_DISABLED === "true" && getAppEnv() !== "production";
+}
+
 export function checkRateLimit(key: string, windowMs: number, max: number): RateLimitResult {
+  if (isRateLimitDisabledForTests()) return { allowed: true };
+
   const now = Date.now();
   sweepExpired(now);
 
@@ -42,6 +59,28 @@ export function checkRateLimit(key: string, windowMs: number, max: number): Rate
     return { allowed: false, retryAfterSeconds: Math.ceil((existing.resetAt - now) / 1000) };
   }
   return { allowed: true };
+}
+
+export interface DualRateLimitConfig {
+  /** A short, stable name for the endpoint being limited, e.g. "resume-upload" — becomes part of
+   *  the bucket key, so it must be unique per limited action. */
+  scope: string;
+  userId: string;
+  userMax: number;
+  userWindowMs: number;
+  globalMax: number;
+  globalWindowMs: number;
+}
+
+/** Per-user limits alone cap what any single account can do, but do nothing against many cheap
+ *  accounts each staying just under their own cap — the aggregate cost (AI API spend, DB load)
+ *  is the same either way. This checks a shared "global:<scope>" bucket first (protects the
+ *  service as a whole) and only then the per-user bucket (protects against one account hammering
+ *  its own share) — whichever trips first is reported, so the caller always gets one answer. */
+export function checkUserAndGlobalRateLimit(config: DualRateLimitConfig): RateLimitResult {
+  const globalResult = checkRateLimit(`global:${config.scope}`, config.globalWindowMs, config.globalMax);
+  if (!globalResult.allowed) return globalResult;
+  return checkRateLimit(`user:${config.scope}:${config.userId}`, config.userWindowMs, config.userMax);
 }
 
 /** Best-effort client identifier for rate-limit keying — trusts x-forwarded-for since this app

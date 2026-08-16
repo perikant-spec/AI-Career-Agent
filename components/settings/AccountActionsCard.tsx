@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { signOut } from "next-auth/react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +10,31 @@ export function AccountActionsCard() {
   const [password, setPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [aiTrainingOptIn, setAiTrainingOptIn] = useState<boolean | null>(null);
+  const [savingToggle, setSavingToggle] = useState(false);
+
+  const loadToggle = useCallback(async () => {
+    const res = await fetch("/api/preferences");
+    if (!res.ok) return;
+    const body = await res.json();
+    setAiTrainingOptIn(body.preferences.aiTrainingOptIn ?? false);
+  }, []);
+
+  useEffect(() => {
+    loadToggle();
+  }, [loadToggle]);
+
+  async function handleToggle(next: boolean) {
+    setAiTrainingOptIn(next);
+    setSavingToggle(true);
+    await fetch("/api/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ aiTrainingOptIn: next }),
+    });
+    setSavingToggle(false);
+  }
 
   async function handleDelete() {
     setDeleting(true);
@@ -33,7 +58,35 @@ export function AccountActionsCard() {
       <div className="text-[13.5px] font-semibold mb-1">Privacy &amp; data</div>
       <div className="text-[12.5px] text-ink-tertiary leading-relaxed mb-4">
         Resume files and application data are never used to train models unless you explicitly
-        opt in — no such toggle exists yet in this phase, so nothing is ever used for training.
+        opt in below. Read the{" "}
+        <a href="/terms" target="_blank" className="underline">Terms of Service</a> and{" "}
+        <a href="/privacy" target="_blank" className="underline">Privacy Policy</a>.
+      </div>
+
+      <div className="flex items-center justify-between gap-3 pb-4">
+        <div>
+          <div className="text-[13px] font-medium">Use my data to improve AI models</div>
+          <div className="text-[12px] text-ink-tertiary mt-0.5">
+            Off by default. No training pipeline exists in this product today — this only
+            controls what a future one would be allowed to use.
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={aiTrainingOptIn ?? false}
+          disabled={aiTrainingOptIn === null || savingToggle}
+          onClick={() => handleToggle(!aiTrainingOptIn)}
+          className={`relative w-10 h-6 rounded-full transition-colors shrink-0 ${
+            aiTrainingOptIn ? "bg-accent-teal" : "bg-border-strong"
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-card transition-transform ${
+              aiTrainingOptIn ? "translate-x-4" : ""
+            }`}
+          />
+        </button>
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-border pt-4">

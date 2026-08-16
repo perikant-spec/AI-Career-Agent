@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { generateResumeVersion } from "@/lib/resume/generateResumeVersion";
+import { checkUserAndGlobalRateLimit, rateLimitResponse } from "@/lib/security/rateLimit";
+import { RATE_LIMITS } from "@/lib/security/rateLimits.config";
+import { checkAIBudget } from "@/lib/ai/usageLimits";
 
 function serialize(row: {
   content: string;
@@ -38,6 +41,14 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   const job = await prisma.job.findFirst({ where: { id, userId } });
   if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const rate = checkUserAndGlobalRateLimit({ scope: "resumeCustomization", userId, ...RATE_LIMITS.resumeCustomization });
+  if (!rate.allowed) return rateLimitResponse(rate.retryAfterSeconds!);
+
+  const budget = await checkAIBudget(userId);
+  if (!budget.allowed) {
+    return NextResponse.json({ error: budget.reason }, { status: 429 });
+  }
 
   const result = await generateResumeVersion(userId, id);
   return NextResponse.json({

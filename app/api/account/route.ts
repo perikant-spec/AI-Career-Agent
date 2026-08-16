@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { resolveUserId } from "@/lib/auth/resolveUserId";
 import { deleteAccountSchema } from "@/lib/validation/auth";
-import { storage } from "@/lib/storage/localDisk";
+import { getStorageProvider } from "@/lib/storage";
 import { checkRateLimit, rateLimitResponse } from "@/lib/security/rateLimit";
 
 /** Password-confirmed, self-service, irreversible. Every user-owned table cascades from the
@@ -30,7 +30,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Incorrect password." }, { status: 401 });
   }
 
-  await storage.deleteAll(userId);
+  await getStorageProvider().deleteAll(userId);
   await prisma.user.delete({ where: { id: userId } });
 
   return NextResponse.json({ success: true });

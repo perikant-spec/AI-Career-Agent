@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveUserId } from "@/lib/auth/resolveUserId";
 import { buildProfileSnapshot } from "@/lib/profile/profileSnapshot";
 import { scoreJobForUser } from "@/lib/scoring/scoreJob";
+import { checkAIBudget } from "@/lib/ai/usageLimits";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await resolveUserId(request);
@@ -23,13 +24,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const profileEntries = await prisma.careerProfileEntry.findMany({ where: { userId } });
     const currentHash = buildProfileSnapshot(profileEntries).versionHash;
     if (currentHash !== matchScore.profileVersionHash) {
-      await scoreJobForUser(userId, id);
-      // scoreJobForUser always upserts a row for this exact (userId, jobId) pair, so this is
-      // guaranteed to exist — re-fetched fresh rather than reshaping PersistedMatchScore's
-      // slightly different field shapes back into the Prisma row type.
-      matchScore = await prisma.matchScore.findUniqueOrThrow({
-        where: { userId_jobId: { userId, jobId: id } },
-      });
+      // Auto-rescore is a side effect of a read, so a blown AI budget degrades to "serve the
+      // last known score" rather than failing the page load — the explicit rescore/customize
+      // actions are what surface the budget error to the user.
+      const budget = await checkAIBudget(userId);
+      if (budget.allowed) {
+        await scoreJobForUser(userId, id);
+        // scoreJobForUser always upserts a row for this exact (userId, jobId) pair, so this is
+        // guaranteed to exist — re-fetched fresh rather than reshaping PersistedMatchScore's
+        // slightly different field shapes back into the Prisma row type.
+        matchScore = await prisma.matchScore.findUniqueOrThrow({
+          where: { userId_jobId: { userId, jobId: id } },
+        });
+      }
     }
   }
 

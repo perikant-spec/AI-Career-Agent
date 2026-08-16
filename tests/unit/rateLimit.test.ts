@@ -1,5 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { checkRateLimit, getClientIp, __resetRateLimitStateForTests } from "@/lib/security/rateLimit";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  checkRateLimit,
+  checkUserAndGlobalRateLimit,
+  getClientIp,
+  __resetRateLimitStateForTests,
+} from "@/lib/security/rateLimit";
 
 describe("checkRateLimit", () => {
   beforeEach(() => {
@@ -38,6 +43,89 @@ describe("checkRateLimit", () => {
     vi.advanceTimersByTime(1001);
     expect(checkRateLimit(key, 1000, 5).allowed).toBe(true);
     vi.useRealTimers();
+  });
+});
+
+describe("checkUserAndGlobalRateLimit", () => {
+  beforeEach(() => {
+    __resetRateLimitStateForTests();
+  });
+
+  it("allows requests under both the per-user and global caps", () => {
+    const result = checkUserAndGlobalRateLimit({
+      scope: "test-scope-1",
+      userId: "user-1",
+      userMax: 5,
+      userWindowMs: 60_000,
+      globalMax: 100,
+      globalWindowMs: 60_000,
+    });
+    expect(result.allowed).toBe(true);
+  });
+
+  it("blocks once the per-user cap is exceeded, even though global is nowhere near its cap", () => {
+    const config = { scope: "test-scope-2", userId: "user-2", userMax: 3, userWindowMs: 60_000, globalMax: 1000, globalWindowMs: 60_000 };
+    for (let i = 0; i < 3; i++) checkUserAndGlobalRateLimit(config);
+    expect(checkUserAndGlobalRateLimit(config).allowed).toBe(false);
+  });
+
+  it("blocks once the global cap is exceeded, even for a user well under their own per-user cap", () => {
+    const globalConfig = { scope: "test-scope-3", userMax: 1000, userWindowMs: 60_000, globalMax: 3, globalWindowMs: 60_000 };
+    // Three different users each make one request — none individually near their own cap.
+    checkUserAndGlobalRateLimit({ ...globalConfig, userId: "user-a" });
+    checkUserAndGlobalRateLimit({ ...globalConfig, userId: "user-b" });
+    checkUserAndGlobalRateLimit({ ...globalConfig, userId: "user-c" });
+    // A fourth request from yet another user trips the shared global bucket.
+    expect(checkUserAndGlobalRateLimit({ ...globalConfig, userId: "user-d" }).allowed).toBe(false);
+  });
+
+  it("different scopes never share a bucket", () => {
+    const configA = { scope: "scope-a", userId: "same-user", userMax: 1, userWindowMs: 60_000, globalMax: 1000, globalWindowMs: 60_000 };
+    const configB = { scope: "scope-b", userId: "same-user", userMax: 1, userWindowMs: 60_000, globalMax: 1000, globalWindowMs: 60_000 };
+    expect(checkUserAndGlobalRateLimit(configA).allowed).toBe(true);
+    expect(checkUserAndGlobalRateLimit(configA).allowed).toBe(false); // scope-a now exhausted for this user
+    expect(checkUserAndGlobalRateLimit(configB).allowed).toBe(true); // scope-b is untouched
+  });
+});
+
+describe("RATE_LIMIT_DISABLED escape hatch — gated on APP_ENV, not NODE_ENV", () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    __resetRateLimitStateForTests();
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+    vi.unstubAllEnvs();
+  });
+
+  it("RATE_LIMIT_DISABLED has no effect when APP_ENV=production, even if NODE_ENV is not production", () => {
+    process.env.APP_ENV = "production";
+    process.env.RATE_LIMIT_DISABLED = "true";
+    vi.stubEnv("NODE_ENV", "test"); // vitest's own ambient NODE_ENV — deliberately not "production"
+
+    for (let i = 0; i < 5; i++) checkRateLimit("prod-gate-key", 60_000, 5);
+    expect(checkRateLimit("prod-gate-key", 60_000, 5).allowed).toBe(false);
+  });
+
+  it("RATE_LIMIT_DISABLED takes effect when APP_ENV=development, even though `next start`-style NODE_ENV=production", () => {
+    process.env.APP_ENV = "development";
+    process.env.RATE_LIMIT_DISABLED = "true";
+    vi.stubEnv("NODE_ENV", "production"); // mirrors `next start` in CI's integration-tests job
+
+    for (let i = 0; i < 10; i++) {
+      expect(checkRateLimit("ci-gate-key", 60_000, 5).allowed).toBe(true);
+    }
+  });
+
+  it("RATE_LIMIT_DISABLED is inert when unset, regardless of APP_ENV", () => {
+    process.env.APP_ENV = "development";
+    delete process.env.RATE_LIMIT_DISABLED;
+
+    for (let i = 0; i < 5; i++) checkRateLimit("unset-gate-key", 60_000, 5);
+    expect(checkRateLimit("unset-gate-key", 60_000, 5).allowed).toBe(false);
   });
 });
 

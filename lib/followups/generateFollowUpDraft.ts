@@ -4,6 +4,9 @@ import { validateCitations } from "@/lib/evidence/validator";
 import type { JobRequirements } from "@/lib/ai/types";
 import { buildApplicationFacts } from "@/lib/application/facts";
 import { daysBetween } from "./dueDate";
+import { withUsageTracking, summarizeUsage } from "@/lib/ai/usageTracking";
+import { estimateCostUsd } from "@/lib/ai/pricing";
+import { validateGeneratedClaims, allowedSourceTextFromFacts } from "@/lib/evidence/claimValidator";
 
 const FALLBACK_CONTENT =
   "I couldn't generate a grounded draft here from your verified profile — worth writing this one yourself.";
@@ -36,17 +39,22 @@ export async function ensureFollowUpDraft(userId: string, followUpId: string, fo
 
   const appliedAt = followUp.application.appliedAt ?? followUp.createdAt;
   const daysSinceApplied = Math.max(0, daysBetween(appliedAt, new Date()));
+  const allowedSourceText = allowedSourceTextFromFacts(facts, [daysSinceApplied]);
 
   let draft: FollowUpDraft;
   let status: "SUCCESS" | "ERROR" = "SUCCESS";
+  let usage = summarizeUsage([]);
 
   try {
-    const result = await provider.generateFollowUpMessage({ ...facts, daysSinceApplied });
+    const tracked = await withUsageTracking(() => provider.generateFollowUpMessage({ ...facts, daysSinceApplied }));
+    usage = summarizeUsage(tracked.usage);
+    const result = tracked.result;
     const { valid } = validateCitations(result.citedEntityIds, allowedIds);
-    draft = valid && result.content.trim()
+    const claimCheck = valid ? validateGeneratedClaims(result.content, allowedSourceText) : { valid: false, unsupportedNumbers: [], unsupportedSkills: [] };
+    draft = valid && claimCheck.valid && result.content.trim()
       ? { content: result.content.trim(), citedEntityIds: result.citedEntityIds }
       : { content: FALLBACK_CONTENT, citedEntityIds: [] };
-    if (!valid) status = "ERROR";
+    if (!valid || !claimCheck.valid) status = "ERROR";
   } catch {
     draft = { content: FALLBACK_CONTENT, citedEntityIds: [] };
     status = "ERROR";
@@ -61,6 +69,9 @@ export async function ensureFollowUpDraft(userId: string, followUpId: string, fo
       inputRef: followUpId,
       outputRef: draft.content.slice(0, 200),
       status,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      estimatedCostUsd: estimateCostUsd(usage.model, usage.inputTokens, usage.outputTokens),
     },
   });
 

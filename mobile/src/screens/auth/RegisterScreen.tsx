@@ -1,22 +1,24 @@
 import { useState } from "react";
-import { View, Text, TextInput, StyleSheet } from "react-native";
+import { View, Text, TextInput, StyleSheet, Switch, Linking } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Screen } from "@/components/Screen";
 import { Button } from "@/components/Button";
 import { useAuth } from "@/auth/AuthContext";
 import { colors, fonts, radii } from "@/theme/tokens";
 import type { AuthStackParamList } from "@/navigation/types";
+import { API_URL } from "@/api/client";
 
 export function RegisterScreen({ navigation }: NativeStackScreenProps<AuthStackParamList, "Register">) {
   const { register, error } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit() {
     setLoading(true);
-    await register(email.trim(), password, name.trim() || undefined);
+    await register(email.trim(), password, acceptedLegal, name.trim() || undefined);
     setLoading(false);
   }
 
@@ -52,9 +54,31 @@ export function RegisterScreen({ navigation }: NativeStackScreenProps<AuthStackP
         />
         <Text style={styles.hint}>At least 8 characters.</Text>
 
+        <View style={styles.consentRow}>
+          <Switch value={acceptedLegal} onValueChange={setAcceptedLegal} />
+          <Text style={styles.consentText}>
+            I agree to the{" "}
+            <Text style={styles.link} onPress={() => Linking.openURL(`${API_URL}/terms`)}>
+              Terms of Service
+            </Text>{" "}
+            and{" "}
+            <Text style={styles.link} onPress={() => Linking.openURL(`${API_URL}/privacy`)}>
+              Privacy Policy
+            </Text>
+            .
+          </Text>
+        </View>
+
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <Button variant="primary" label={loading ? "Creating account…" : "Create account"} onPress={handleSubmit} loading={loading} style={{ marginTop: 8 }} />
+        <Button
+          variant="primary"
+          label={loading ? "Creating account…" : "Create account"}
+          onPress={handleSubmit}
+          loading={loading}
+          disabled={!acceptedLegal}
+          style={{ marginTop: 8 }}
+        />
         <Button variant="ghost" label="Already have an account? Sign in" onPress={() => navigation.navigate("Login")} />
       </View>
     </Screen>
@@ -81,6 +105,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   hint: { fontFamily: fonts.sans, fontSize: 11, color: colors.ink.quaternary, marginTop: 4 },
+  consentRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginTop: 14 },
+  consentText: { flex: 1, fontFamily: fonts.sans, fontSize: 12.5, color: colors.ink.secondary, lineHeight: 17 },
+  link: { textDecorationLine: "underline" },
   error: {
     fontFamily: fonts.sans,
     fontSize: 12.5,

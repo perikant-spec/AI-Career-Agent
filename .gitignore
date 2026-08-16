@@ -30,14 +30,20 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files — never commit real secrets; .env.example is documentation and is explicitly
-# un-ignored below
+# env files — never commit real secrets; the per-environment .example templates are
+# documentation and are explicitly un-ignored below
 .env*
 !.env.example
+!.env.staging.example
+!.env.production.example
 
 # sqlite dev database (legacy — production uses Postgres, see DATABASE_URL)
 /prisma/*.db
 /prisma/*.db-journal
+
+# local embedded Postgres data directory + backups — never commit database contents
+/.postgres-data
+/backups
 
 # local resume/file storage (legacy local-disk provider — production uses object storage)
 /data/uploads
@@ -54,6 +60,7 @@ next-env.d.ts
 # Claude Code local machine settings — personal, references local file paths, not project config.
 # .claude/launch.json (dev server definitions) is intentionally still tracked.
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # editors
 .vscode/*
