@@ -1,4 +1,4 @@
-const TIER_COLOR = (score: number) => {
+export const TIER_COLOR = (score: number) => {
   if (score >= 85) return "oklch(0.68 0.13 165)"; // strong match teal-green
   if (score >= 70) return "oklch(0.72 0.12 175)"; // teal
   if (score >= 55) return "oklch(0.78 0.11 75)"; // amber
