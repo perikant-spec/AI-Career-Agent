@@ -5,6 +5,7 @@ import Link from "next/link";
 import { QuestionSetSidebar } from "@/components/interview/QuestionSetSidebar";
 import { StarAnswerCard } from "@/components/interview/StarAnswerCard";
 import { CompanyResearchPanel } from "@/components/interview/CompanyResearchPanel";
+import { utcToZonedParts, formatZonedDateTime } from "@/lib/time";
 
 interface MockAttempt {
   id: string;
@@ -29,10 +30,17 @@ interface QuestionDetail {
 interface InterviewPrepData {
   id: string;
   companyResearch: Array<{ label: string; text: string }>;
+  scheduledAt: string | null;
   readiness: number;
   rehearsedCount: number;
   totalCount: number;
   questions: QuestionDetail[];
+}
+
+function toDatetimeLocalValue(iso: string, timezone: string): string {
+  const parts = utcToZonedParts(new Date(iso), timezone);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}T${pad(parts.hour)}:${pad(parts.minute)}`;
 }
 
 export default function InterviewPrepPage({ params }: { params: Promise<{ applicationId: string }> }) {
@@ -43,17 +51,27 @@ export default function InterviewPrepPage({ params }: { params: Promise<{ applic
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [timezone, setTimezone] = useState("UTC");
+  const [scheduleInput, setScheduleInput] = useState("");
+  const [savingSchedule, setSavingSchedule] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/applications/${applicationId}/interview-prep`);
-    if (!res.ok) {
+    const [prepRes, prefsRes] = await Promise.all([
+      fetch(`/api/applications/${applicationId}/interview-prep`),
+      fetch("/api/preferences"),
+    ]);
+    const tz = prefsRes.ok ? ((await prefsRes.json()).preferences.timezone ?? "UTC") : "UTC";
+    setTimezone(tz);
+
+    if (!prepRes.ok) {
       setLoading(false);
       return;
     }
-    const body = await res.json();
+    const body = await prepRes.json();
     setEligible(body.eligible);
     setUpgradeRequired(Boolean(body.upgradeRequired));
     setPrep(body.interviewPrep);
+    setScheduleInput(body.interviewPrep?.scheduledAt ? toDatetimeLocalValue(body.interviewPrep.scheduledAt, tz) : "");
     setLoading(false);
     setSelectedId((current) => current ?? body.interviewPrep?.questions?.[0]?.id ?? null);
   }, [applicationId]);
@@ -82,6 +100,17 @@ export default function InterviewPrepPage({ params }: { params: Promise<{ applic
     });
     await load();
     setBusy(false);
+  }
+
+  async function saveSchedule() {
+    setSavingSchedule(true);
+    await fetch(`/api/applications/${applicationId}/interview-prep`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scheduledAtLocal: scheduleInput || null }),
+    });
+    await load();
+    setSavingSchedule(false);
   }
 
   if (loading) {
@@ -134,6 +163,35 @@ export default function InterviewPrepPage({ params }: { params: Promise<{ applic
           <div className="text-[11px] text-ink-quaternary mt-1.5">
             {prep.rehearsedCount} of {prep.totalCount} answers rehearsed
           </div>
+        </div>
+      </div>
+
+      <div className="bg-card border border-border rounded-card px-4.5 py-3.5 mt-4 max-w-[420px]">
+        <div className="text-[11.5px] text-ink-tertiary mb-1.5">Interview time</div>
+        {prep.scheduledAt ? (
+          <div className="text-[13.5px] mb-2">
+            {formatZonedDateTime(new Date(prep.scheduledAt), timezone, "long")}
+            <span className="text-ink-quaternary text-[11.5px]"> ({timezone})</span>
+          </div>
+        ) : (
+          <div className="text-[12.5px] text-ink-tertiary mb-2">
+            No time set yet — the daily briefing will say &quot;you have an upcoming interview&quot; without a time until you add one.
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <input
+            type="datetime-local"
+            value={scheduleInput}
+            onChange={(e) => setScheduleInput(e.target.value)}
+            className="rounded-btn border border-border-strong bg-card px-3 py-2 text-[13.5px] outline-none focus:border-ink-quaternary"
+          />
+          <button
+            onClick={saveSchedule}
+            disabled={savingSchedule}
+            className="text-[12.5px] font-medium px-3 py-2 rounded-btn border border-border-strong hover:border-ink-quaternary disabled:opacity-50"
+          >
+            {savingSchedule ? "Saving…" : "Save"}
+          </button>
         </div>
       </div>
 

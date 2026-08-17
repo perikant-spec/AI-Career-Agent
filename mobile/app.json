@@ -32,7 +32,16 @@
           "image": "./assets/icon.png",
           "imageWidth": 140
         }
-      ]
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#F4F1EA",
+          "defaultChannel": "default"
+        }
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }

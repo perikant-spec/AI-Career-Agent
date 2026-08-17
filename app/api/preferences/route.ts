@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { isValidIanaTimeZone } from "@/lib/time";
 
 const updateSchema = z.object({
   targetTitles: z.array(z.string().trim().min(1)).max(20).optional(),
@@ -10,6 +11,7 @@ const updateSchema = z.object({
   workAuthorization: z.string().trim().max(500).optional().nullable(),
   followUpDays: z.number().int().min(1).max(90).optional(),
   aiTrainingOptIn: z.boolean().optional(),
+  timezone: z.string().refine(isValidIanaTimeZone, { message: "Not a recognized IANA timezone." }).optional(),
 });
 
 export async function GET() {
@@ -27,6 +29,7 @@ export async function GET() {
           workAuthorization: prefs.workAuthorization,
           followUpDays: prefs.followUpDays,
           aiTrainingOptIn: prefs.aiTrainingOptIn,
+          timezone: prefs.timezone,
         }
       : {
           targetTitles: [],
@@ -35,6 +38,7 @@ export async function GET() {
           workAuthorization: null,
           followUpDays: 7,
           aiTrainingOptIn: false,
+          timezone: "UTC",
         },
   });
 }
@@ -50,7 +54,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid input." }, { status: 400 });
   }
 
-  const { targetTitles, targetLocations, salaryFloor, workAuthorization, followUpDays, aiTrainingOptIn } = parsed.data;
+  const { targetTitles, targetLocations, salaryFloor, workAuthorization, followUpDays, aiTrainingOptIn, timezone } = parsed.data;
 
   const prefs = await prisma.userPreferences.upsert({
     where: { userId },
@@ -62,6 +66,7 @@ export async function PUT(request: Request) {
       workAuthorization: workAuthorization ?? undefined,
       followUpDays: followUpDays ?? undefined,
       aiTrainingOptIn: aiTrainingOptIn ?? undefined,
+      timezone: timezone ?? undefined,
     },
     update: {
       targetTitles: targetTitles ? JSON.stringify(targetTitles) : undefined,
@@ -70,6 +75,7 @@ export async function PUT(request: Request) {
       workAuthorization: workAuthorization === null ? null : workAuthorization,
       followUpDays: followUpDays ?? undefined,
       aiTrainingOptIn: aiTrainingOptIn ?? undefined,
+      timezone: timezone ?? undefined,
     },
   });
 
@@ -81,6 +87,7 @@ export async function PUT(request: Request) {
       workAuthorization: prefs.workAuthorization,
       followUpDays: prefs.followUpDays,
       aiTrainingOptIn: prefs.aiTrainingOptIn,
+      timezone: prefs.timezone,
     },
   });
 }

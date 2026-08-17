@@ -7,6 +7,7 @@ import { ChatThread, type ChatMessage } from "@/components/assistant/ChatThread"
 import { ChatComposer } from "@/components/assistant/ChatComposer";
 import { IntentChip } from "@/components/assistant/IntentChip";
 import { FollowUpQueue } from "@/components/followups/FollowUpQueue";
+import { DailyBriefingCard } from "@/components/briefing/DailyBriefingCard";
 
 interface JobSummary {
   score: { overallScore: number; recommendationTier: string } | null;
@@ -130,6 +131,7 @@ export default function AssistantHomePage() {
       </section>
 
       <aside className="border-l border-border bg-[#FBF9F3] px-6 py-8 flex flex-col gap-5">
+        <DailyBriefingCard />
         <FollowUpQueue />
         <div>
           <div className="text-[10.5px] tracking-[0.12em] uppercase text-ink-quaternary mb-2.5">

@@ -1,11 +1,13 @@
-import { useState } from "react";
-import { View, Text, TextInput, StyleSheet } from "react-native";
+import { useState, useEffect } from "react";
+import { View, Text, TextInput, StyleSheet, Switch, Platform } from "react-native";
 import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { colors, fonts, radii } from "@/theme/tokens";
 import { useAuth } from "@/auth/AuthContext";
 import { apiFetch } from "@/api/client";
+import { registerForDailyBriefing, unregisterFromDailyBriefing } from "@/push/pushRegistration";
+import { getStoredPushToken, setStoredPushToken, clearStoredPushToken } from "@/push/pushTokenStorage";
 
 export function SettingsScreen() {
   const { user, token, signOut } = useAuth();
@@ -13,6 +15,40 @@ export function SettingsScreen() {
   const [password, setPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [briefingEnabled, setBriefingEnabled] = useState(false);
+  const [briefingBusy, setBriefingBusy] = useState(false);
+  const [briefingError, setBriefingError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getStoredPushToken().then((stored) => setBriefingEnabled(stored !== null));
+  }, []);
+
+  async function toggleBriefing(next: boolean) {
+    if (!token) return;
+    setBriefingBusy(true);
+    setBriefingError(null);
+
+    if (next) {
+      const result = await registerForDailyBriefing(token);
+      if (result.registered && result.pushToken) {
+        await setStoredPushToken(result.pushToken);
+        setBriefingEnabled(true);
+      } else {
+        setBriefingError(
+          result.reason === "permission_denied"
+            ? "Notification permission was denied — enable it in your device Settings to turn this on."
+            : "Couldn't turn this on right now."
+        );
+      }
+    } else {
+      const stored = await getStoredPushToken();
+      if (stored) await unregisterFromDailyBriefing(token, stored);
+      await clearStoredPushToken();
+      setBriefingEnabled(false);
+    }
+
+    setBriefingBusy(false);
+  }
 
   async function handleDelete() {
     setDeleting(true);
@@ -46,6 +82,23 @@ export function SettingsScreen() {
           are best done on the web for now; this app is built for staying on top of your search on
           the go. To export your data, use Settings on the web app.
         </Text>
+      </Card>
+
+      <Card style={{ marginTop: 12 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={styles.sectionTitle}>Daily briefing notifications</Text>
+          <Switch
+            value={briefingEnabled}
+            onValueChange={toggleBriefing}
+            disabled={briefingBusy || Platform.OS === "web"}
+          />
+        </View>
+        <Text style={styles.body}>
+          A morning push notification summarizing new matches, follow-ups due, and your next
+          interview — never sent more than once a day, and never with a fabricated interview time.
+          {Platform.OS === "web" ? " Not available on the web preview — enable on a phone." : ""}
+        </Text>
+        {briefingError ? <Text style={styles.errorText}>{briefingError}</Text> : null}
       </Card>
 
       <Button variant="destructive" label="Sign out" onPress={signOut} style={{ marginTop: 16 }} />
