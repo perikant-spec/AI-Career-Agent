@@ -4,7 +4,7 @@ import { colors, fonts } from "@/theme/tokens";
 // React Native has no conic-gradient primitive (unlike the web ScoreRing), so this renders as a
 // flat tone-coded badge circle instead of a progress ring — same information, a native-idiomatic
 // shape rather than porting a web-only CSS trick.
-function tierColor(score: number): string {
+export function tierColor(score: number): string {
   if (score >= 85) return colors.accent.success;
   if (score >= 70) return colors.accent.teal;
   if (score >= 55) return colors.accent.warning;

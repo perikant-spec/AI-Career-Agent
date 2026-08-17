@@ -17,7 +17,7 @@ export function LegalDocPage({ doc }: { doc: LegalDocument }) {
           <div className="text-[12px] text-ink-quaternary mt-1 font-mono">Version: {doc.version}</div>
 
           {doc.body === null ? (
-            <div className="mt-6 border border-accent-warning-border bg-accent-warning-bg text-accent-warning-text rounded-btn px-4 py-3.5 text-[13.5px] leading-relaxed">
+            <div className="mt-6 border border-accent-warning-border bg-accent-warning-bg text-ink-primary rounded-btn px-4 py-3.5 text-[13.5px] leading-relaxed">
               This document has not been published yet — the version above is a technical
               placeholder pending legal review, not a substitute for real {doc.title.toLowerCase()}{" "}
               language. Registering an account records acceptance of whatever version is current

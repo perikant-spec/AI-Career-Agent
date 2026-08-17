@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Card } from "@/components/ui/Card";
 import { StatTile } from "@/components/ui/StatTile";
+import { CareerHealthSection } from "@/components/health/CareerHealthSection";
 
 interface FunnelStage {
   key: string;
@@ -49,14 +50,18 @@ export default function AnalyticsPage() {
         }
       />
 
+      <div className="mt-7">
+        <CareerHealthSection />
+      </div>
+
       {summary.totalApplications === 0 ? (
-        <Card className="p-6 mt-7 text-[13.5px] text-ink-tertiary">
+        <Card className="p-6 mt-4 text-[13.5px] text-ink-tertiary">
           No applications yet. Once you&apos;ve scored a few jobs and moved some through the
           tracker, your funnel and averages will show up here.
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-4 gap-3 mt-7">
+          <div className="grid grid-cols-4 gap-3 mt-4">
             <StatTile
               value={summary.avgMatchScore ?? "—"}
               label="Avg. match score"

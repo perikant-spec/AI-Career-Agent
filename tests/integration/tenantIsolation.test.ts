@@ -294,6 +294,23 @@ describe.runIf(await serverReachable())("Multi-tenant isolation / IDOR", () => {
   );
 
   it(
+    "career-health aggregate for User B reflects only User B's own (empty) footprint, never User A's",
+    async () => {
+      // Not an ID-substitution target like the sweep above — /api/career-health has no resource
+      // id, it's a "my own aggregate" endpoint like /api/profile and /api/account/export. The
+      // isolation risk here is a query that accidentally pools across every user's rows instead
+      // of scoping by userId; User B has zero activity, so a leak would show up as a nonzero
+      // categoriesUsed/overallScore reflecting User A's real data.
+      const res = await mobileAs(userB, "/api/career-health");
+      expect(res.status).toBe(200);
+      const body = await json<{ summary: { overallScore: number | null; categoriesUsed: number } }>(res);
+      expect(body.summary.categoriesUsed).toBe(0);
+      expect(body.summary.overallScore).toBeNull();
+    },
+    STEP_TIMEOUT
+  );
+
+  it(
     "User A can still reach all of their own resources (isolation isn't just \"everything 404s\")",
     async () => {
       const res = await mobileAs(userA, `/api/applications/${applicationId}`);

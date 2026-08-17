@@ -2,13 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import type { ConfidenceLevel } from "@/lib/types/enums";
-
-const CONFIDENCE_WEIGHT: Record<ConfidenceLevel, number> = {
-  VERIFIED: 1,
-  SUPPORTED_INFERENCE: 0.6,
-  NOT_VERIFIED: 0.3,
-  MISSING: 0,
-};
+import { computeConfidenceScore } from "@/lib/health/subScorers";
 
 export async function GET() {
   const session = await auth();
@@ -29,14 +23,9 @@ export async function GET() {
     counts[entry.confidence as ConfidenceLevel] = (counts[entry.confidence as ConfidenceLevel] ?? 0) + 1;
   }
 
-  const overallConfidence =
-    entries.length === 0
-      ? 0
-      : Math.round(
-          (entries.reduce((sum, e) => sum + (CONFIDENCE_WEIGHT[e.confidence as ConfidenceLevel] ?? 0), 0) /
-            entries.length) *
-            100
-        );
+  const overallConfidence = computeConfidenceScore(
+    entries.map((e) => ({ confidence: e.confidence as ConfidenceLevel }))
+  );
 
   return NextResponse.json({
     sections: bySection,
