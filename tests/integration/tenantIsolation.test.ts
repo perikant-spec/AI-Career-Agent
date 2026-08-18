@@ -222,6 +222,13 @@ describe.runIf(await serverReachable())("Multi-tenant isolation / IDOR", () => {
         { label: "application PATCH", auth: "mobile", path: `/api/applications/${applicationId}`, method: "PATCH", body: { notes: "hacked" } },
         { label: "application status", auth: "mobile", path: `/api/applications/${applicationId}/status`, method: "POST", body: { status: "REJECTED" } },
         { label: "application interview-prep", auth: "mobile", path: `/api/applications/${applicationId}/interview-prep` },
+        {
+          label: "interview-prep scheduledAt PATCH",
+          auth: "mobile",
+          path: `/api/applications/${interviewPrepApplicationId}/interview-prep`,
+          method: "PATCH",
+          body: { scheduledAtLocal: "2026-09-01T10:00" },
+        },
         { label: "contact detail", auth: "mobile", path: `/api/contacts/${contactId}` },
         { label: "contact PATCH", auth: "mobile", path: `/api/contacts/${contactId}`, method: "PATCH", body: { name: "hacked" } },
         { label: "contact DELETE", auth: "mobile", path: `/api/contacts/${contactId}`, method: "DELETE" },
@@ -273,6 +280,44 @@ describe.runIf(await serverReachable())("Multi-tenant isolation / IDOR", () => {
       expect(jobsB.jobs.length).toBe(0);
       expect(applicationsB.applications.length).toBe(0);
       expect(contactsB.contacts.length).toBe(0);
+    },
+    STEP_TIMEOUT
+  );
+
+  it(
+    "User B cannot delete User A's push token by guessing/knowing its value",
+    async () => {
+      const { prisma } = await import("@/lib/prisma");
+      const token = `ExponentPushToken[isolation-test-${Date.now()}]`;
+      await mobileAs(userA, "/api/push-tokens", { method: "POST", body: JSON.stringify({ token, platform: "IOS" }) });
+
+      const deleteAsB = await mobileAs(userB, "/api/push-tokens", { method: "DELETE", body: JSON.stringify({ token }) });
+      // Scoped deleteMany matches zero rows for a token that isn't User B's own -- this returns
+      // success either way (never confirms-by-error whether the token exists for someone else),
+      // so the real assertion is that the row still exists afterward, not the response status.
+      expect(deleteAsB.status).toBe(200);
+
+      const stillExists = await prisma.pushToken.findUnique({ where: { token } });
+      expect(stillExists?.userId).toBe(userA.userId);
+    },
+    STEP_TIMEOUT
+  );
+
+  it(
+    "GET /api/daily-briefing for User B reflects only User B's own (empty) data, never User A's",
+    async () => {
+      // Not an ID-substitution attack -- daily-briefing has no resource id parameter -- but an
+      // aggregate-scoping check like the account-export test below: User B has none of User A's
+      // jobs/applications/interviews, so their briefing must show the onboarding shape and must
+      // never leak User A's job/company names into the response.
+      const res = await mobileAs(userB, "/api/daily-briefing");
+      expect(res.status).toBe(200);
+      const body = await json<{ lines: string[]; facts: Record<string, unknown> }>(res);
+      const raw = JSON.stringify(body);
+      expect(raw).not.toContain("Globex");
+      expect(raw).not.toContain("Staff Engineer");
+      expect(body.facts.newJobsCount).toBe(0);
+      expect(body.facts.upcomingInterview).toBeNull();
     },
     STEP_TIMEOUT
   );

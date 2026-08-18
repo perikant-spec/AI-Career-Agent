@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { View, Text, TextInput, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, StyleSheet, ActivityIndicator, Platform } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
@@ -10,6 +11,27 @@ import { useApiQuery } from "@/api/useApiQuery";
 import { apiFetch } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import type { InterviewsStackParamList } from "@/navigation/types";
+
+// Hermes (Expo SDK 57+) ships full ICU, so Intl.DateTimeFormat with a timeZone option works here
+// the same as it does server-side -- this is a small local helper rather than importing the
+// Next.js project's lib/time/, which is a separate app this mobile project has no dependency on
+// or module-resolution path to.
+function formatInZone(iso: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(
+    new Date(iso)
+  );
+}
+
+// The picker returns a Date whose local getters reflect whatever wall-clock the device's native
+// UI displayed -- read those digits directly rather than converting through any timezone. This
+// matches the web datetime-local input's semantics exactly: both send raw wall-clock digits, and
+// the PATCH /interview-prep route is the one place that authoritatively interprets them, using
+// the user's UserPreferences.timezone -- never the device's own zone, which could differ (e.g.
+// scheduling while traveling).
+function toScheduledAtLocal(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 interface InterviewQuestion {
   id: string;
@@ -25,6 +47,7 @@ interface InterviewPrepResponse {
     readiness: number;
     rehearsedCount: number;
     totalCount: number;
+    scheduledAt: string | null;
     companyResearch: { summary: string; talkingPoints: string[] } | Record<string, unknown>;
     questions: InterviewQuestion[];
   } | null;
@@ -145,6 +168,24 @@ export function InterviewDetailScreen({
   const { data, loading, error, refetch } = useApiQuery<InterviewPrepResponse>(
     `/api/applications/${applicationId}/interview-prep`
   );
+  const { data: prefsData } = useApiQuery<{ preferences: { timezone: string } }>("/api/preferences");
+  const [showPicker, setShowPicker] = useState(false);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const timezone = prefsData?.preferences.timezone ?? "UTC";
+
+  async function saveSchedule(date: Date) {
+    setSavingSchedule(true);
+    try {
+      await apiFetch(`/api/applications/${applicationId}/interview-prep`, {
+        method: "PATCH",
+        body: { scheduledAtLocal: toScheduledAtLocal(date) },
+        token,
+      });
+      await refetch();
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
 
   if (loading && !data) {
     return (
@@ -190,6 +231,44 @@ export function InterviewDetailScreen({
         <Text style={styles.readinessNote}>
           {interviewPrep.rehearsedCount} of {interviewPrep.totalCount} questions rehearsed
         </Text>
+      </Card>
+
+      <Card style={{ marginTop: 12 }}>
+        <Text style={styles.sectionTitle}>Interview time</Text>
+        {interviewPrep.scheduledAt ? (
+          <Text style={styles.bodyText}>
+            {formatInZone(interviewPrep.scheduledAt, timezone)} ({timezone})
+          </Text>
+        ) : (
+          <Text style={styles.readinessNote}>
+            No time set yet — the daily briefing will say &quot;you have an upcoming interview&quot;
+            without a time until you add one.
+          </Text>
+        )}
+        {Platform.OS === "web" ? (
+          <Text style={styles.readinessNote}>Set this from the web app for now.</Text>
+        ) : (
+          <>
+            <Button
+              variant="secondary"
+              label={savingSchedule ? "Saving…" : interviewPrep.scheduledAt ? "Change time" : "Set time"}
+              onPress={() => setShowPicker(true)}
+              loading={savingSchedule}
+              style={{ marginTop: 10 }}
+            />
+            {showPicker ? (
+              <DateTimePicker
+                value={interviewPrep.scheduledAt ? new Date(interviewPrep.scheduledAt) : new Date()}
+                mode="datetime"
+                display="default"
+                onChange={(_event, selectedDate) => {
+                  setShowPicker(Platform.OS === "ios");
+                  if (selectedDate) saveSchedule(selectedDate);
+                }}
+              />
+            ) : null}
+          </>
+        )}
       </Card>
 
       {research?.summary ? (

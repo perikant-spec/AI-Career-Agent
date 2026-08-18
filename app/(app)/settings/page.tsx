@@ -15,7 +15,13 @@ interface Preferences {
   salaryFloor: number | null;
   workAuthorization: string | null;
   followUpDays: number;
+  timezone: string;
 }
+
+// "UTC" is a valid Intl timeZone value and this app's default, but Intl.supportedValuesOf
+// doesn't itself enumerate it (only real IANA identifiers) -- prepended manually so it's always
+// selectable, matching the same carve-out lib/time/zonedTime.ts#isValidIanaTimeZone makes.
+const TIMEZONE_OPTIONS = ["UTC", ...Intl.supportedValuesOf("timeZone")];
 
 interface JobSource {
   id: string;
@@ -36,6 +42,7 @@ export default function SettingsPage() {
   const [salaryFloorInput, setSalaryFloorInput] = useState("");
   const [workAuthInput, setWorkAuthInput] = useState("");
   const [followUpDaysInput, setFollowUpDaysInput] = useState("7");
+  const [timezoneInput, setTimezoneInput] = useState("UTC");
 
   const load = useCallback(async () => {
     const [prefsRes, sourcesRes] = await Promise.all([
@@ -51,6 +58,7 @@ export default function SettingsPage() {
     setSalaryFloorInput(prefsBody.preferences.salaryFloor ? String(prefsBody.preferences.salaryFloor) : "");
     setWorkAuthInput(prefsBody.preferences.workAuthorization ?? "");
     setFollowUpDaysInput(String(prefsBody.preferences.followUpDays ?? 7));
+    setTimezoneInput(prefsBody.preferences.timezone ?? "UTC");
     setSources(sourcesBody.sources);
   }, []);
 
@@ -70,6 +78,7 @@ export default function SettingsPage() {
         salaryFloor: salaryFloorInput ? parseInt(salaryFloorInput, 10) : null,
         workAuthorization: workAuthInput.trim() || null,
         followUpDays: followUpDaysInput ? parseInt(followUpDaysInput, 10) : 7,
+        timezone: timezoneInput,
       }),
     });
     setSaving(false);
@@ -153,6 +162,24 @@ export default function SettingsPage() {
               <span className="text-[11.5px] text-ink-quaternary">
                 A follow-up reminder is scheduled this many days after you mark an application
                 Applied. Fixed timer for now — response-rate-informed timing is a later phase.
+              </span>
+            </label>
+            <label className="flex flex-col gap-1.5 text-[13px] text-ink-secondary">
+              Timezone
+              <select
+                value={timezoneInput}
+                onChange={(e) => setTimezoneInput(e.target.value)}
+                className="rounded-btn border border-border-strong bg-card px-3 py-2 text-[14px] outline-none focus:border-ink-quaternary"
+              >
+                {TIMEZONE_OPTIONS.map((tz) => (
+                  <option key={tz} value={tz}>
+                    {tz}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[11.5px] text-ink-quaternary">
+                Used to show interview times in your local time and to send your morning briefing
+                notification at your local morning, not UTC&apos;s.
               </span>
             </label>
           </div>

@@ -59,6 +59,8 @@ model User {
   preferences           UserPreferences?
   aiInteractions   AIInteraction[]
   subscription          Subscription?
+  pushTokens            PushToken[]
+  dailyBriefingLogs     DailyBriefingLog[]
 }
 
 model ResumeDocument {
@@ -251,6 +253,15 @@ model InterviewPrep {
   // facts about the company. No web research/scraping capability exists in this build.
   companyResearch String
 
+  // Deliberate deviation from this schema's plain-DateTime-everywhere convention: every other
+  // DateTime here is either a same-process-relative timestamp or already effectively UTC-only in
+  // meaning. scheduledAt is the one field whose entire purpose is "this absolute instant,
+  // unambiguous regardless of the reading timezone" — a push notification fired hours off because
+  // of implicit local-time storage would be a correctness bug, not cosmetic. Nullable: never
+  // fabricate a time — if unset, the daily briefing falls back to an honest "You have an upcoming
+  // interview" with no time claimed (see lib/briefing/subFacts.ts#resolveUpcomingInterview).
+  scheduledAt DateTime? @db.Timestamptz(6)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -397,6 +408,12 @@ model UserPreferences {
   // correctly, rather than retrofitting consent after the fact.
   aiTrainingOptIn Boolean @default(false)
 
+  // IANA zone name (e.g. "America/Chicago"). Defaults to UTC — an honest, unambiguous default
+  // rather than guessing the user's real zone from IP/locale, which this app has no signal for
+  // server-side. Every daily-briefing cron/display computation reads this field; nothing infers
+  // a zone silently (see lib/time/zonedTime.ts).
+  timezone String @default("UTC")
+
   updatedAt DateTime @updatedAt
 }
 
@@ -459,6 +476,55 @@ model EmailLog {
   to        String
   subject   String
   text      String
+  createdAt DateTime @default(now())
+
+  @@index([to, createdAt])
+}
+
+// Expo push tokens are opaque, rotate-able strings tied to a specific app install — a user can
+// have more than one (e.g. phone + tablet, or a reinstall that issued a new token before the old
+// one was cleaned up), so this is many-per-user, not a single column on User.
+model PushToken {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token    String @unique // Expo push token, e.g. "ExponentPushToken[xxxx]"
+  platform String // IOS | ANDROID | WEB -- WEB is stored but never targeted by the sender (no real
+  // web push capability exists in this build; see lib/push/providers/expoPush.ts)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Idempotency/dedup log for the hourly daily-briefing cron -- this table is what prevents the
+// same person getting today's briefing twice across multiple hourly ticks within their local
+// morning window, and is also the "new jobs since when" cursor for lib/briefing/subFacts.ts.
+model DailyBriefingLog {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // The user's own local calendar date at send time, e.g. "2026-08-17" -- a string, not a
+  // DateTime, specifically so the uniqueness constraint means "this local day" regardless of what
+  // UTC instant that mapped to, which is exactly what "don't double-send this morning" requires.
+  localDate String
+  sentAt    DateTime @default(now())
+
+  @@unique([userId, localDate])
+  @@index([userId])
+}
+
+// Written by the console/test PushProvider (lib/push/providers/console.ts) in place of a real
+// device push -- mirrors EmailLog's role exactly, used when EXPO_PUSH_DISABLED=true (local
+// dev/tests) so no real Expo push service call happens.
+model PushLog {
+  id        String   @id @default(cuid())
+  to        String
+  title     String
+  body      String
   createdAt DateTime @default(now())
 
   @@index([to, createdAt])

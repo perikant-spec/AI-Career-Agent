@@ -4,6 +4,7 @@ import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { StatTile } from "@/components/StatTile";
+import { DailyBriefingCard } from "@/components/DailyBriefingCard";
 import { colors, fonts, radii } from "@/theme/tokens";
 import { useApiQuery } from "@/api/useApiQuery";
 import { apiFetch } from "@/api/client";
@@ -63,6 +64,8 @@ export function HomeScreen() {
         <StatTile value={analytics?.summary.totalApplications ?? "—"} label="Applications" />
         <StatTile value={analytics?.summary.avgMatchScore ?? "—"} label="Avg match score" />
       </View>
+
+      <DailyBriefingCard />
 
       <Card style={{ marginTop: 16 }}>
         <Text style={styles.sectionTitle}>Ask your assistant</Text>

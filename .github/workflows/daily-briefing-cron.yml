@@ -1,0 +1,24 @@
+# Triggers the hourly daily-briefing send (app/api/cron/daily-briefing/route.ts). The endpoint
+# itself decides per-user eligibility (their own local morning window, not already sent today) --
+# this workflow's only job is to call it regularly.
+#
+# Inert until deployed: this repo has no live public deployment yet (hosting is intentionally
+# platform-agnostic and undecided -- see docs/DEPLOYMENT.md), so APP_URL/CRON_SECRET repo secrets
+# don't exist and every run of this workflow will fail the curl step until they're set. Same
+# documented gap as the Dockerfile's own top comment flags for its unexercised build -- this is
+# the honest state of things, not a bug to silently work around.
+name: Daily Briefing Cron
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch: {} # manual trigger, useful once a real deployment exists to test on demand
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call daily-briefing cron endpoint
+        run: |
+          curl -sf -X POST "${{ secrets.APP_URL }}/api/cron/daily-briefing" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
