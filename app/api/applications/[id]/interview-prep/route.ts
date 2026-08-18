@@ -147,11 +147,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   // Same lazy-create guarantee as the GET handler above -- an application can reach Interview
   // status without ever having called GET first, so this PATCH must not assume a row already
   // exists. Same entitlement gate too: generation (not mere existence) is what's Pro-gated.
+  //
+  // Deliberately 200, not 402, matching GET's convention on this route (not the 402-everywhere
+  // convention most other Pro-gated routes use): the schedule picker this PATCH serves is only
+  // ever rendered after GET has already reported upgradeRequired: false, and mobile's apiFetch
+  // (mobile/src/api/client.ts) discards a non-ok response's JSON body, which would silently
+  // drop upgradeRequired on a 402 here. Normalizing to GET's already-correct-on-both-clients
+  // 200 shape is the fix that doesn't require also reworking the mobile API client.
   const existing = await prisma.interviewPrep.findUnique({ where: { applicationId: id } });
   if (!existing) {
     const gate = await assertProFeature(userId, "INTERVIEW_PREP");
     if (!gate.allowed) {
-      return NextResponse.json({ error: gate.reason, upgradeRequired: true }, { status: 402 });
+      return NextResponse.json({ error: gate.reason, upgradeRequired: true });
     }
   }
   await ensureInterviewPrep(userId, id);
