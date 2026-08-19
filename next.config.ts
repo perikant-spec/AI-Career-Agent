@@ -52,6 +52,16 @@ const nextConfig: NextConfig = {
   // Node) -- ships a platform-specific native binary the same way, so it gets the same treatment.
   serverExternalPackages: ["pdf-parse", "mammoth", "@napi-rs/canvas"],
 
+  // @napi-rs/canvas's platform-specific native binary (e.g. @napi-rs/canvas-linux-x64-gnu) is
+  // resolved by its own index.js at runtime based on process.platform/arch -- a dynamic require
+  // Vercel's file-tracer (@vercel/nft) can't follow statically, so it silently excluded the
+  // binary from the deployed Lambda even with serverExternalPackages set (confirmed live: the
+  // module was present locally but Vercel's runtime logs still showed "Cannot find module
+  // '@napi-rs/canvas'"). This is Next's own documented fix for exactly that failure mode.
+  outputFileTracingIncludes: {
+    "/*": ["node_modules/@napi-rs/canvas/**/*"],
+  },
+
   async headers() {
     return [{ source: "/(.*)", headers: SECURITY_HEADERS }];
   },
