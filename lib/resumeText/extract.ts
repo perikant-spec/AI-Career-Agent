@@ -1,4 +1,5 @@
 import type { ResumeExtractionStatus } from "@/lib/types/enums";
+import { getLogger } from "@/lib/logging";
 
 export interface TextExtractionResult {
   status: ResumeExtractionStatus;
@@ -73,7 +74,14 @@ export async function extractResumeText(
     }
 
     return { status: "SUCCESS", text };
-  } catch {
+  } catch (err) {
+    // Was previously a bare `catch {}` -- swallowed the real error entirely, so a production
+    // failure left no trace to diagnose from. Logged now; user-facing behavior is unchanged.
+    getLogger().error("Resume text extraction threw", {
+      fileName,
+      mimeType,
+      error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : String(err),
+    });
     return {
       status: "FAILED",
       text: "",
