@@ -161,6 +161,7 @@ See `.env.example` (local dev template) and `.env.staging.example`/`.env.product
 | `EXPO_PUSH_DISABLED` | Set `true` in local dev/tests to avoid firing real device push notifications |
 | `CRON_SECRET` | Required to call `/api/cron/daily-briefing` |
 | `RATE_LIMIT_DISABLED` | Local dev/CI only — disables rate limiting so integration tests can register many accounts quickly |
+| `BETA_AUTO_PRO` | Beta-only, temporary — new signups start on Pro instead of Free (`lib/billing/entitlements.ts`). Unset once the beta period ends |
 
 ## Troubleshooting
 
