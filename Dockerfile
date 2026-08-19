@@ -15,6 +15,12 @@ FROM node:20-slim AS base
 FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
+
+# npm ci's postinstall hook (package.json) runs `prisma generate`, which reads DATABASE_URL at
+# config-load time even though it never connects to it -- same build-time-only placeholder the
+# builder stage below uses, needed here too now that generation happens during install, not only
+# via the builder stage's own explicit `npx prisma generate`.
+ENV DATABASE_URL="postgresql://user:password@localhost:5432/placeholder"
 RUN npm ci
 
 # ---- builder: generate the Prisma client and produce the standalone Next.js build ----
