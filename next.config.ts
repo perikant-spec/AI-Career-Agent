@@ -6,8 +6,19 @@ const isProd = process.env.NODE_ENV === "production";
 // bridge, so it's production-only — dev still gets every other header. No external script/style/
 // font/image origins are ever loaded (next/font self-hosts Google Fonts at build time; no CDN,
 // no third-party embeds), so this can stay tight without an allowlist to maintain.
+//
+// script-src needs 'unsafe-inline' -- without it, this blocked Next's own inline hydration
+// bootstrap scripts in production (confirmed live: CSP violations in the console followed by a
+// React hydration error), breaking client-side interactivity across the whole app, not just one
+// component. style-src already carried 'unsafe-inline' for the same reason (Next's inline
+// styles); script-src missing it was the actual bug, not a deliberate choice -- there's no nonce
+// generated anywhere in proxy.ts, and Next.js's own CSP guide is explicit that script-src
+// without a nonce must include 'unsafe-inline' or the framework's own scripts get blocked. The
+// stricter alternative (a proxy-generated nonce, allowing 'unsafe-inline' to be dropped) is a
+// real option later, but it requires forcing every page into dynamic rendering (no more static
+// generation/ISR/CDN caching) -- a bigger, separate tradeoff than this fix.
 const CSP_PROD =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'";
+  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'";
 
 const SECURITY_HEADERS: { key: string; value: string }[] = [
   { key: "X-Content-Type-Options", value: "nosniff" },
