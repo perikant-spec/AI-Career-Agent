@@ -25,10 +25,14 @@ const SECURITY_HEADERS: { key: string; value: string }[] = [
 const nextConfig: NextConfig = {
   // Produces a self-contained .next/standalone build (traced node_modules + a server.js
   // entrypoint) instead of requiring the full node_modules tree at runtime — this is what makes
-  // the Dockerfile's runtime image small and is safe to leave on regardless of host: Vercel
-  // ignores it and manages its own optimized output, everything else (Railway/Render/Fly/a VPS)
-  // benefits from it.
-  output: "standalone",
+  // the Dockerfile's runtime image small, for Docker/self-hosted deploys (Railway/Render/Fly/a
+  // VPS). Vercel's own build pipeline does NOT tolerate this option: it produces its own output
+  // via the Build Output API and expects the standard (non-standalone) trace files, so leaving
+  // this on unconditionally breaks the Vercel build with "ENOENT .next/next-server.js.nft.json"
+  // during Vercel's own onBuildComplete step -- confirmed by a real deployment failure, which
+  // disproved an earlier, untested assumption that Vercel simply "ignores" this option.
+  // process.env.VERCEL is set to "1" during every Vercel build and runtime.
+  ...(process.env.VERCEL ? {} : { output: "standalone" as const }),
 
   // pdf-parse/mammoth are only ever imported from server-only route handlers, but Next's
   // bundler will still try to trace/bundle them for the server runtime unless told not to —
