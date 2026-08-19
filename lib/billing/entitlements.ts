@@ -9,11 +9,20 @@ import {
 } from "./plans";
 
 /** Lazily creates the FREE-plan row on first read — there's no separate "sign up for free"
- *  step, every user is implicitly on FREE until a checkout completes. */
+ *  step, every user is implicitly on FREE until a checkout completes.
+ *
+ *  BETA_AUTO_PRO is a temporary, beta-only override: when set, every newly-created account
+ *  starts on Pro instead of Free, so test users don't need a real Stripe checkout to try the
+ *  Pro-gated features. This is the one deliberate exception to "only the Stripe webhook writes
+ *  plan/status" (lib/billing/syncSubscription.ts's own comment) — it only ever fires at the
+ *  moment a Subscription row is first created, never on an update, so it can't override a real
+ *  Stripe-synced plan later. Unset BETA_AUTO_PRO once the beta ends; new signups after that
+ *  revert to the normal FREE default with no further code change needed. */
 async function getOrCreateSubscription(userId: string) {
   const existing = await prisma.subscription.findUnique({ where: { userId } });
   if (existing) return existing;
-  return prisma.subscription.create({ data: { userId } });
+  const plan = process.env.BETA_AUTO_PRO === "true" ? "PRO" : undefined;
+  return prisma.subscription.create({ data: { userId, plan } });
 }
 
 // Pure logic, exported separately so it's unit-testable without a database — the async
