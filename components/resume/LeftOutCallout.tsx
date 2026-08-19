@@ -31,7 +31,7 @@ export function LeftOutCallout({
               <div key={item} className="flex items-center justify-between gap-2 text-[12.5px]">
                 <span className="text-ink-primary">{item}</span>
                 {added ? (
-                  <span className="text-accent-success-text font-medium">Added — regenerate to include it</span>
+                  <span className="text-accent-success-text font-medium">Added to your Career Profile</span>
                 ) : (
                   <button
                     type="button"
@@ -46,9 +46,10 @@ export function LeftOutCallout({
             );
           })}
           <div className="text-[11px] text-ink-quaternary mt-0.5">
-            Only add this if it&apos;s actually true — it&apos;s saved as your own claim, not
-            something the agent verified, and won&apos;t appear in the tailored resume until you
-            regenerate.
+            Only add this if it&apos;s actually true. It&apos;s saved to your Career Profile as
+            your own unverified claim, for your own record — this app never weaves a manually-typed
+            claim into a tailored resume, cover letter, or interview answer, the same as everywhere
+            else here. To have it actually used, it needs to come from an uploaded resume.
           </div>
         </div>
       ) : null}
