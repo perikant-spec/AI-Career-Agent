@@ -47,8 +47,10 @@ const nextConfig: NextConfig = {
 
   // pdf-parse/mammoth are only ever imported from server-only route handlers, but Next's
   // bundler will still try to trace/bundle them for the server runtime unless told not to —
-  // this keeps them as plain Node `require`s instead.
-  serverExternalPackages: ["pdf-parse", "mammoth"],
+  // this keeps them as plain Node `require`s instead. @napi-rs/canvas is pdf-parse's own
+  // dependency (pdfjs-dist uses it to polyfill DOMMatrix/ImageData/Path2D, which don't exist in
+  // Node) -- ships a platform-specific native binary the same way, so it gets the same treatment.
+  serverExternalPackages: ["pdf-parse", "mammoth", "@napi-rs/canvas"],
 
   async headers() {
     return [{ source: "/(.*)", headers: SECURITY_HEADERS }];
