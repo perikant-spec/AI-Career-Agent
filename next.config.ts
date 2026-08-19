@@ -56,13 +56,13 @@ const nextConfig: NextConfig = {
   // (@napi-rs/canvas-linux-x64-gnu on Vercel, resolved by @napi-rs/canvas's own index.js at
   // runtime based on process.platform/arch) -- a dynamic require Vercel's file-tracer
   // (@vercel/nft) can't follow statically, so it silently excluded the binary from the deployed
-  // Lambda even with serverExternalPackages set. The glob below must match "canvas*", not just
-  // "canvas" -- an earlier version of this fix only covered node_modules/@napi-rs/canvas/**/*
-  // and missed the sibling -linux-x64-gnu package entirely, which is what actually ships the
-  // .node binary; confirmed live via runtime logs still showing "Cannot find native binding"
-  // even after this file listed the (wrong) narrower path.
+  // Lambda even with serverExternalPackages set. The glob matches "canvas*", not just "canvas",
+  // to also catch that sibling package. Scoped to only the one route that actually calls
+  // extractResumeText (app/api/resumes/route.ts) -- an earlier version of this fix used the
+  // global "/*" key, which bundled this multi-MB native binary into every route's function and
+  // pushed the deployment over Vercel Hobby's 12-serverless-function limit outright.
   outputFileTracingIncludes: {
-    "/*": ["node_modules/@napi-rs/canvas*/**/*"],
+    "/api/resumes": ["node_modules/@napi-rs/canvas*/**/*"],
   },
 
   async headers() {
