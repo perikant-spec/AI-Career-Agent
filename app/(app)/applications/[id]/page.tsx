@@ -49,6 +49,8 @@ export default function ApplicationWorkspacePage({ params }: { params: Promise<{
   const [tab, setTab] = useState<Tab>("resume");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [addedLeftOutItems, setAddedLeftOutItems] = useState<string[]>([]);
+  const [pendingLeftOutItem, setPendingLeftOutItem] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/applications/${id}`);
@@ -95,6 +97,28 @@ export default function ApplicationWorkspacePage({ params }: { params: Promise<{
     });
     await load();
     setBusy(false);
+  }
+
+  // Approving a piece only ever changes that piece's own tab (see the disabled/renamed button) —
+  // nothing else on screen visibly moves, which reads as the page having silently done nothing.
+  // Jumping to the next un-approved tab makes the three-piece gate legible as a sequence instead.
+  async function approvePiece(field: "resumeApproved" | "coverLetterApproved" | "qaApproved", nextTab: Tab) {
+    await patch({ [field]: true });
+    setTab((current) => {
+      const stillOnApprovedTab = current === (field === "resumeApproved" ? "resume" : field === "coverLetterApproved" ? "coverLetter" : "qa");
+      return stillOnApprovedTab ? nextTab : current;
+    });
+  }
+
+  async function addLeftOutItem(item: string) {
+    setPendingLeftOutItem(item);
+    await fetch("/api/profile/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ section: "SKILL", value: item }),
+    });
+    setAddedLeftOutItems((prev) => [...prev, item]);
+    setPendingLeftOutItem(null);
   }
 
   if (loading || !app) {
@@ -168,9 +192,18 @@ export default function ApplicationWorkspacePage({ params }: { params: Promise<{
                 <AtsScoreTiles before={resumeVersion.atsScoreBefore} after={resumeVersion.atsScoreAfter} />
                 <ResumeComparisonPanel content={resumeVersion.content} companyName={app.job.company} />
                 <ChangeLogPanel changeLog={resumeVersion.changeLog} />
-                <LeftOutCallout leftOut={resumeVersion.content.leftOut} />
+                <LeftOutCallout
+                  leftOut={resumeVersion.content.leftOut}
+                  addedItems={addedLeftOutItems}
+                  pendingItem={pendingLeftOutItem}
+                  onAdd={addLeftOutItem}
+                />
                 <div className="flex gap-2">
-                  <Button variant="primary" disabled={busy || app.resumeApproved} onClick={() => patch({ resumeApproved: true })}>
+                  <Button
+                    variant="primary"
+                    disabled={busy || app.resumeApproved}
+                    onClick={() => approvePiece("resumeApproved", "coverLetter")}
+                  >
                     {app.resumeApproved ? "Approved" : "Approve this piece"}
                   </Button>
                   <Button variant="secondary" disabled={busy} onClick={() => patch({ regenerate: "resume" })}>
@@ -186,7 +219,7 @@ export default function ApplicationWorkspacePage({ params }: { params: Promise<{
               coverLetter={app.coverLetter}
               approved={app.coverLetterApproved}
               busy={busy}
-              onApprove={() => patch({ coverLetterApproved: true })}
+              onApprove={() => approvePiece("coverLetterApproved", "qa")}
               onRegenerate={() => patch({ regenerate: "coverLetter" })}
               onSaveEdit={(text) => patch({ coverLetterText: text })}
             />
@@ -195,7 +228,7 @@ export default function ApplicationWorkspacePage({ params }: { params: Promise<{
               qaAnswers={app.qaAnswers}
               approved={app.qaApproved}
               busy={busy}
-              onApprove={() => patch({ qaApproved: true })}
+              onApprove={() => approvePiece("qaApproved", "qa")}
               onRegenerate={() => patch({ regenerate: "qa" })}
               onSaveAnswer={(index, answer) => patch({ qaAnswerEdit: { index, answer } })}
             />
