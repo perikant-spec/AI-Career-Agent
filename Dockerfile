@@ -11,10 +11,20 @@
 
 FROM node:20-slim AS base
 
-# ---- deps: install once, cached across builds unless package*.json changes ----
+# ---- deps: install once, cached across builds unless package*.json or the schema changes ----
 FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
+# npm ci's postinstall hook (package.json) runs `prisma generate`, which needs the schema file
+# present -- pulled forward from the builder stage's full `COPY . .` since generation now happens
+# during install, not only via the builder stage's own explicit `npx prisma generate`. This also
+# means this layer's cache now correctly invalidates on schema changes, not just package*.json.
+COPY prisma ./prisma
+
+# prisma generate reads DATABASE_URL at config-load time even though it never connects to it --
+# same build-time-only placeholder the builder stage below uses, needed here too for the same
+# reason.
+ENV DATABASE_URL="postgresql://user:password@localhost:5432/placeholder"
 RUN npm ci
 
 # ---- builder: generate the Prisma client and produce the standalone Next.js build ----
