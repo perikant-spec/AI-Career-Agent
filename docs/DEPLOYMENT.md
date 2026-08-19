@@ -13,7 +13,7 @@ it, rather than assuming one.
 
 | Option | Deploy method | Notes |
 |---|---|---|
-| **Vercel** | git push, zero config | Built by the Next.js team; ignores `Dockerfile`/`output: "standalone"` and manages its own build. Postgres/S3/everything else still external. |
+| **Vercel** | git push, zero config | Built by the Next.js team; ignores the `Dockerfile` entirely and manages its own build via the Build Output API. `next.config.ts` disables `output: "standalone"` specifically when `process.env.VERCEL` is set, since Vercel's build does not tolerate that option (confirmed by a real deployment failure — it broke Vercel's own trace-file step). Postgres/S3/everything else still external. |
 | **Railway / Render / Fly.io** | `Dockerfile` (this repo has one) | Container PaaS; Railway and Render can also host the Postgres instance alongside the app. |
 | **Self-hosted / VPS** | `Dockerfile` + `docker-compose.yml` + a reverse proxy | Most setup, most control. Needs your own TLS termination (Caddy or nginx) in front of the container. |
 
