@@ -61,8 +61,13 @@ const nextConfig: NextConfig = {
   // extractResumeText (app/api/resumes/route.ts) -- an earlier version of this fix used the
   // global "/*" key, which bundled this multi-MB native binary into every route's function and
   // pushed the deployment over Vercel Hobby's 12-serverless-function limit outright.
+  // pdfjs-dist (pdf-parse's own dependency) also ships a worker script (pdf.worker.mjs) that its
+  // own code loads by file path at runtime rather than a static import -- same untraceable
+  // pattern as the canvas binary above, confirmed live via a second, separate missing-file error
+  // after the canvas fix resolved ("Cannot find module '.../pdfjs-dist/legacy/build/
+  // pdf.worker.mjs'"). Including the whole package covers this and any other same-pattern file.
   outputFileTracingIncludes: {
-    "/api/resumes": ["node_modules/@napi-rs/canvas*/**/*"],
+    "/api/resumes": ["node_modules/@napi-rs/canvas*/**/*", "node_modules/pdfjs-dist/**/*"],
   },
 
   async headers() {
