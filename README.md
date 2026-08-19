@@ -166,10 +166,10 @@ npm run build
 npm start
 ```
 
-`npm run build` runs `next build` (which also runs `prisma generate`). Docker, staging/production
-environment requirements, and the deployment runbook are documented in full in
-[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — as of this writing, no hosting platform has actually
-been deployed to; that document describes the prepared infrastructure, not a live instance.
+A `postinstall` script (`prisma generate`) regenerates the typed Prisma client on every
+`npm install`, so `npm run build`'s `next build` always sees real model types rather than falling
+back to `any`. Docker, staging/production environment requirements, and the deployment runbook are
+documented in full in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## Documentation
 
