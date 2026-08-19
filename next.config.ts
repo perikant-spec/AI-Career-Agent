@@ -47,8 +47,28 @@ const nextConfig: NextConfig = {
 
   // pdf-parse/mammoth are only ever imported from server-only route handlers, but Next's
   // bundler will still try to trace/bundle them for the server runtime unless told not to —
-  // this keeps them as plain Node `require`s instead.
-  serverExternalPackages: ["pdf-parse", "mammoth"],
+  // this keeps them as plain Node `require`s instead. @napi-rs/canvas is pdf-parse's own
+  // dependency (pdfjs-dist uses it to polyfill DOMMatrix/ImageData/Path2D, which don't exist in
+  // Node) -- ships a platform-specific native binary the same way, so it gets the same treatment.
+  serverExternalPackages: ["pdf-parse", "mammoth", "@napi-rs/canvas"],
+
+  // @napi-rs/canvas's platform-specific native binary lives in a SEPARATE package
+  // (@napi-rs/canvas-linux-x64-gnu on Vercel, resolved by @napi-rs/canvas's own index.js at
+  // runtime based on process.platform/arch) -- a dynamic require Vercel's file-tracer
+  // (@vercel/nft) can't follow statically, so it silently excluded the binary from the deployed
+  // Lambda even with serverExternalPackages set. The glob matches "canvas*", not just "canvas",
+  // to also catch that sibling package. Scoped to only the one route that actually calls
+  // extractResumeText (app/api/resumes/route.ts) -- an earlier version of this fix used the
+  // global "/*" key, which bundled this multi-MB native binary into every route's function and
+  // pushed the deployment over Vercel Hobby's 12-serverless-function limit outright.
+  // pdfjs-dist (pdf-parse's own dependency) also ships a worker script (pdf.worker.mjs) that its
+  // own code loads by file path at runtime rather than a static import -- same untraceable
+  // pattern as the canvas binary above, confirmed live via a second, separate missing-file error
+  // after the canvas fix resolved ("Cannot find module '.../pdfjs-dist/legacy/build/
+  // pdf.worker.mjs'"). Including the whole package covers this and any other same-pattern file.
+  outputFileTracingIncludes: {
+    "/api/resumes": ["node_modules/@napi-rs/canvas*/**/*", "node_modules/pdfjs-dist/**/*"],
+  },
 
   async headers() {
     return [{ source: "/(.*)", headers: SECURITY_HEADERS }];
